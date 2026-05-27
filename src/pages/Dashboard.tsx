@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import Modal from '../components/Modal'
 import { formatDataOra } from '../utils/format'
+import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
 
 export default function Dashboard() {
   const { id } = useParams()
@@ -63,11 +64,9 @@ export default function Dashboard() {
     navigate(`/partita/${id}`)
   }
 
-  async function eliminaPartita(partitaId: number) {
+  async function eliminaPartitaConferma(partitaId: number) {
     if (!confirm('Eliminare questa partita? Tutti gli eventi registrati verranno persi.')) return
-    // Elimina prima gli eventi, poi la partita
-    await db.eventi.where('partitaId').equals(partitaId).delete()
-    await db.partite.delete(partitaId)
+    await cascadeEliminaPartita(partitaId)
   }
 
   // Lookup veloce nome avversario per renderizzare le partite
@@ -175,7 +174,7 @@ export default function Dashboard() {
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
                 <button
-                  onClick={() => eliminaPartita(p.id!)}
+                  onClick={() => eliminaPartitaConferma(p.id!)}
                   className="text-slate-500 hover:text-red-400 text-sm ml-3"
                 >
                   Elimina
@@ -204,6 +203,12 @@ export default function Dashboard() {
                 >
                   <div className="font-semibold">vs {nomeAvversario(p.avversarioId)}</div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
+                </button>
+                <button
+                  onClick={() => eliminaPartitaConferma(p.id!)}
+                  className="text-slate-500 hover:text-red-400 text-sm ml-3"
+                >
+                  Elimina
                 </button>
               </li>
             ))}

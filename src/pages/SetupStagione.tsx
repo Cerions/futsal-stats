@@ -4,14 +4,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { RUOLI, ruoloShort } from '../db/ruoli'
 import Modal from '../components/Modal'
-import type { Ruolo } from '../db/schema'
+import type { Ruolo, Giocatore, SquadraAvversaria } from '../db/schema'
 
 export default function SetupStagione() {
   const { id } = useParams()
   const navigate = useNavigate()
   const stagioneId = Number(id)
 
-  // Query reattive
   const stagione = useLiveQuery(() => db.stagioni.get(stagioneId), [stagioneId])
   const giocatori = useLiveQuery(
     () => db.giocatori.where('stagioneId').equals(stagioneId).toArray(),
@@ -22,30 +21,47 @@ export default function SetupStagione() {
     [stagioneId]
   )
 
-  // Stato dei modali
+  // ----- MODAL GIOCATORE (unico per aggiunta + modifica) -----
   const [showGiocatore, setShowGiocatore] = useState(false)
-  const [showAvversario, setShowAvversario] = useState(false)
+  const [giocatoreInModifica, setGiocatoreInModifica] = useState<Giocatore | null>(null)
+  const [formNome, setFormNome] = useState('')
+  const [formNumero, setFormNumero] = useState('')
+  const [formRuolo, setFormRuolo] = useState<Ruolo>('UNIVERSALE')
 
-  // Form nuovo giocatore
-  const [nuovoNome, setNuovoNome] = useState('')
-  const [nuovoNumero, setNuovoNumero] = useState('')
-  const [nuovoRuolo, setNuovoRuolo] = useState<Ruolo>('UNIVERSALE')
+  function apriNuovoGiocatore() {
+    setGiocatoreInModifica(null)
+    setFormNome('')
+    setFormNumero('')
+    setFormRuolo('UNIVERSALE')
+    setShowGiocatore(true)
+  }
 
-  // Form nuovo avversario
-  const [nuovoAvversario, setNuovoAvversario] = useState('')
+  function apriModificaGiocatore(g: Giocatore) {
+    setGiocatoreInModifica(g)
+    setFormNome(g.nome)
+    setFormNumero(g.numero?.toString() ?? '')
+    setFormRuolo(g.ruolo)
+    setShowGiocatore(true)
+  }
 
-  async function aggiungiGiocatore() {
-    const nome = nuovoNome.trim()
+  async function salvaGiocatore() {
+    const nome = formNome.trim()
     if (!nome) return
-    await db.giocatori.add({
-      stagioneId,
-      nome,
-      numero: nuovoNumero ? Number(nuovoNumero) : undefined,
-      ruolo: nuovoRuolo,
-    })
-    setNuovoNome('')
-    setNuovoNumero('')
-    setNuovoRuolo('UNIVERSALE')
+    const numero = formNumero ? Number(formNumero) : undefined
+    if (giocatoreInModifica) {
+      await db.giocatori.update(giocatoreInModifica.id!, {
+        nome,
+        numero,
+        ruolo: formRuolo,
+      })
+    } else {
+      await db.giocatori.add({
+        stagioneId,
+        nome,
+        numero,
+        ruolo: formRuolo,
+      })
+    }
     setShowGiocatore(false)
   }
 
@@ -54,11 +70,32 @@ export default function SetupStagione() {
     await db.giocatori.delete(giocatoreId)
   }
 
-  async function aggiungiAvversario() {
-    const nome = nuovoAvversario.trim()
+  // ----- MODAL AVVERSARIO (unico per aggiunta + modifica) -----
+  const [showAvversario, setShowAvversario] = useState(false)
+  const [avversarioInModifica, setAvversarioInModifica] =
+    useState<SquadraAvversaria | null>(null)
+  const [formAvversario, setFormAvversario] = useState('')
+
+  function apriNuovoAvversario() {
+    setAvversarioInModifica(null)
+    setFormAvversario('')
+    setShowAvversario(true)
+  }
+
+  function apriModificaAvversario(a: SquadraAvversaria) {
+    setAvversarioInModifica(a)
+    setFormAvversario(a.nome)
+    setShowAvversario(true)
+  }
+
+  async function salvaAvversario() {
+    const nome = formAvversario.trim()
     if (!nome) return
-    await db.avversari.add({ stagioneId, nome })
-    setNuovoAvversario('')
+    if (avversarioInModifica) {
+      await db.avversari.update(avversarioInModifica.id!, { nome })
+    } else {
+      await db.avversari.add({ stagioneId, nome })
+    }
     setShowAvversario(false)
   }
 
@@ -109,7 +146,7 @@ export default function SetupStagione() {
             </span>
           </h2>
           <button
-            onClick={() => setShowGiocatore(true)}
+            onClick={apriNuovoGiocatore}
             className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
           >
             + Giocatore
@@ -121,24 +158,30 @@ export default function SetupStagione() {
             {giocatori.map((g) => (
               <li
                 key={g.id}
-                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center justify-between"
+                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
               >
-                <div className="flex items-center gap-3">
-                  {g.numero !== undefined && (
-                    <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                      {g.numero}
-                    </span>
-                  )}
-                  <div>
-                    <div className="font-medium">{g.nome}</div>
-                    <div className="text-xs text-slate-400">{ruoloShort(g.ruolo)}</div>
-                  </div>
+                {g.numero !== undefined && (
+                  <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                    {g.numero}
+                  </span>
+                )}
+                <div className="flex-1">
+                  <div className="font-medium">{g.nome}</div>
+                  <div className="text-xs text-slate-400">{ruoloShort(g.ruolo)}</div>
                 </div>
                 <button
-                  onClick={() => eliminaGiocatore(g.id!)}
-                  className="text-slate-400 hover:text-red-400 text-sm"
+                  onClick={() => apriModificaGiocatore(g)}
+                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                  title="Modifica"
                 >
-                  Elimina
+                  ✏️
+                </button>
+                <button
+                  onClick={() => eliminaGiocatore(g.id!)}
+                  className="text-slate-400 hover:text-red-400 text-sm px-2"
+                  title="Elimina"
+                >
+                  🗑️
                 </button>
               </li>
             ))}
@@ -158,7 +201,7 @@ export default function SetupStagione() {
             </span>
           </h2>
           <button
-            onClick={() => setShowAvversario(true)}
+            onClick={apriNuovoAvversario}
             className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
           >
             + Avversario
@@ -170,14 +213,22 @@ export default function SetupStagione() {
             {avversari.map((a) => (
               <li
                 key={a.id}
-                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center justify-between"
+                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
               >
-                <span>{a.nome}</span>
+                <span className="flex-1">{a.nome}</span>
+                <button
+                  onClick={() => apriModificaAvversario(a)}
+                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                  title="Modifica"
+                >
+                  ✏️
+                </button>
                 <button
                   onClick={() => eliminaAvversario(a.id!)}
-                  className="text-slate-400 hover:text-red-400 text-sm"
+                  className="text-slate-400 hover:text-red-400 text-sm px-2"
+                  title="Elimina"
                 >
-                  Elimina
+                  🗑️
                 </button>
               </li>
             ))}
@@ -187,19 +238,19 @@ export default function SetupStagione() {
         )}
       </section>
 
-      {/* Modal nuovo giocatore */}
+      {/* Modal giocatore (nuovo o modifica) */}
       <Modal
         open={showGiocatore}
         onClose={() => setShowGiocatore(false)}
-        title="Nuovo giocatore"
+        title={giocatoreInModifica ? 'Modifica giocatore' : 'Nuovo giocatore'}
       >
         <div className="flex flex-col gap-3">
           <div>
             <label className="block text-sm text-slate-400 mb-1">Nome</label>
             <input
               type="text"
-              value={nuovoNome}
-              onChange={(e) => setNuovoNome(e.target.value)}
+              value={formNome}
+              onChange={(e) => setFormNome(e.target.value)}
               autoFocus
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
             />
@@ -212,16 +263,16 @@ export default function SetupStagione() {
               type="number"
               min="1"
               max="99"
-              value={nuovoNumero}
-              onChange={(e) => setNuovoNumero(e.target.value)}
+              value={formNumero}
+              onChange={(e) => setFormNumero(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
             />
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Ruolo</label>
             <select
-              value={nuovoRuolo}
-              onChange={(e) => setNuovoRuolo(e.target.value as Ruolo)}
+              value={formRuolo}
+              onChange={(e) => setFormRuolo(e.target.value as Ruolo)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
             >
               {RUOLI.map((r) => (
@@ -239,27 +290,29 @@ export default function SetupStagione() {
               Annulla
             </button>
             <button
-              onClick={aggiungiGiocatore}
-              disabled={!nuovoNome.trim()}
+              onClick={salvaGiocatore}
+              disabled={!formNome.trim()}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
-              Aggiungi
+              {giocatoreInModifica ? 'Salva' : 'Aggiungi'}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal nuovo avversario */}
+      {/* Modal avversario (nuovo o modifica) */}
       <Modal
         open={showAvversario}
         onClose={() => setShowAvversario(false)}
-        title="Nuova squadra avversaria"
+        title={
+          avversarioInModifica ? 'Modifica avversario' : 'Nuova squadra avversaria'
+        }
       >
         <input
           type="text"
-          value={nuovoAvversario}
-          onChange={(e) => setNuovoAvversario(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && aggiungiAvversario()}
+          value={formAvversario}
+          onChange={(e) => setFormAvversario(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && salvaAvversario()}
           placeholder="Es. Real Madrid Futsal"
           autoFocus
           className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:border-emerald-500"
@@ -272,11 +325,11 @@ export default function SetupStagione() {
             Annulla
           </button>
           <button
-            onClick={aggiungiAvversario}
-            disabled={!nuovoAvversario.trim()}
+            onClick={salvaAvversario}
+            disabled={!formAvversario.trim()}
             className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
           >
-            Aggiungi
+            {avversarioInModifica ? 'Salva' : 'Aggiungi'}
           </button>
         </div>
       </Modal>
