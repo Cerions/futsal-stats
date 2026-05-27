@@ -78,7 +78,6 @@ function PreMatch({
   avversarioNome: string
   stagioneId: number
 }) {
-  const navigate = useNavigate()
   const [convocati, setConvocati] = useState<Set<number>>(
     new Set(partita.convocati)
   )
