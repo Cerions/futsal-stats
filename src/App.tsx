@@ -3,6 +3,7 @@ import HomePage from './pages/HomePage'
 import SetupStagione from './pages/SetupStagione'
 import Dashboard from './pages/Dashboard'
 import Partita from './pages/Partita'
+import UpdatePrompt from './components/UpdatePrompt'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/stagione/:id" element={<Dashboard />} />
           <Route path="/partita/:id" element={<Partita />} />
         </Routes>
+        <UpdatePrompt />
       </div>
     </BrowserRouter>
   )

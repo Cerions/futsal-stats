@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+/* Ottimizzazioni mobile */
+html {
+  /* evita scroll bouncing e selezione accidentale */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* respect notch */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background-color: #0f172a;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  /* evita doppio tap-to-zoom */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* gli input devono essere selezionabili anche se body non lo è */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* font-size minimo 16px sugli input per evitare zoom automatico iOS */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* scrollbar discreta su desktop */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #1e293b;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+  }
+}
