@@ -285,11 +285,20 @@ function Live({
   )
 
   // Risultato calcolato dagli eventi
-  const golFatti = eventi.filter((e) => e.tipo === 'gol_fatto').length
-  const golSubiti = eventi.filter((e) => e.tipo === 'gol_subito').length
+  // Gol nostri = gol_fatto + autogol_pro (avversario in proprio)
+  // Gol loro = gol_subito + autogol_contro (nostro in proprio)
+  const golFatti = eventi.filter(
+    (e) => e.tipo === 'gol_fatto' || e.tipo === 'autogol_pro'
+  ).length
+  const golSubiti = eventi.filter(
+    (e) => e.tipo === 'gol_subito' || e.tipo === 'autogol_contro'
+  ).length
 
   // ----- STATE: modali -----
   const [showGol, setShowGol] = useState(false)
+  const [marcatoreId, setMarcatoreId] = useState<number | null>(null) // step 2 del gol = scegli assist
+  const [showGolSubito, setShowGolSubito] = useState(false)
+  const [showAutogolContro, setShowAutogolContro] = useState(false) // chi tra i nostri ha segnato in proprio
   const [showCambio, setShowCambio] = useState(false)
   const [esceId, setEsceId] = useState<number | null>(null)
   const [showFineTempo, setShowFineTempo] = useState(false)
@@ -297,21 +306,60 @@ function Live({
 
   // ----- AZIONI -----
 
-  async function segnaGol(giocatoreId: number) {
+  // STEP 1 del gol: scegli marcatore → passa allo step 2 (assist)
+  function scegliMarcatore(giocatoreId: number) {
+    setMarcatoreId(giocatoreId)
+  }
+
+  // STEP 2 del gol: registra con o senza assist
+  async function confermaGol(assistId: number | null) {
+    if (marcatoreId === null) return
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tipo: 'gol_fatto',
-      giocatoreId,
+      giocatoreId: marcatoreId,
+      assistId: assistId ?? undefined,
     })
+    setMarcatoreId(null)
     setShowGol(false)
   }
 
-  async function segnaGolSubito() {
+  function annullaMarcatore() {
+    setMarcatoreId(null)
+  }
+
+  // Gol subito: scelta tra "gol normale" e "autogol di un nostro"
+  async function segnaGolSubitoNormale() {
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tipo: 'gol_subito',
+    })
+    setShowGolSubito(false)
+  }
+
+  function apriAutogolContro() {
+    setShowGolSubito(false)
+    setShowAutogolContro(true)
+  }
+
+  async function segnaAutogolContro(giocatoreId: number) {
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tipo: 'autogol_contro',
+      giocatoreId,
+    })
+    setShowAutogolContro(false)
+  }
+
+  // Autogol pro = avversario fa autogol → gol per noi senza marcatore nostro
+  async function segnaAutogolPro() {
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tipo: 'autogol_pro',
     })
   }
 
@@ -471,7 +519,7 @@ function Live({
               ⚽ Gol nostro
             </button>
             <button
-              onClick={segnaGolSubito}
+              onClick={() => setShowGolSubito(true)}
               className="bg-red-600 hover:bg-red-500 py-4 rounded-lg font-bold text-lg"
             >
               ⚽ Gol subito
@@ -556,13 +604,128 @@ function Live({
         </section>
       )}
 
-      {/* ----- MODAL: scegli marcatore ----- */}
-      <Modal open={showGol} onClose={() => setShowGol(false)} title="Chi ha segnato?">
+      {/* ----- MODAL: gol nostro (2 step: marcatore → assist) ----- */}
+      <Modal
+        open={showGol}
+        onClose={() => {
+          setShowGol(false)
+          setMarcatoreId(null)
+        }}
+        title={
+          marcatoreId === null
+            ? 'Chi ha segnato?'
+            : `Assist? (${nomeCorto(rosa.find((g) => g.id === marcatoreId)!)} ha segnato)`
+        }
+      >
+        {marcatoreId === null ? (
+          // STEP 1: marcatore tra i 5 in campo + opzione autogol avversario
+          <>
+            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+              {inCampo.map((g) => (
+                <li key={g.id}>
+                  <button
+                    onClick={() => scegliMarcatore(g.id!)}
+                    className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg flex items-center gap-3"
+                  >
+                    {g.numero !== undefined && (
+                      <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                        {g.numero}
+                      </span>
+                    )}
+                    <span>{nomeCorto(g)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={() => {
+                  setShowGol(false)
+                  segnaAutogolPro()
+                }}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                Autogol avversario (nessun marcatore)
+              </button>
+            </div>
+          </>
+        ) : (
+          // STEP 2: assistman opzionale tra gli altri 4 in campo
+          <>
+            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+              {inCampo
+                .filter((g) => g.id !== marcatoreId)
+                .map((g) => (
+                  <li key={g.id}>
+                    <button
+                      onClick={() => confermaGol(g.id!)}
+                      className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg flex items-center gap-3"
+                    >
+                      {g.numero !== undefined && (
+                        <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                          {g.numero}
+                        </span>
+                      )}
+                      <span>{nomeCorto(g)}</span>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+            <div className="border-t border-slate-700 mt-3 pt-3 flex gap-2">
+              <button
+                onClick={annullaMarcatore}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+              <button
+                onClick={() => confermaGol(null)}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-lg text-sm font-semibold"
+              >
+                Nessun assist
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ----- MODAL: gol subito (scelta tra normale e autogol) ----- */}
+      <Modal
+        open={showGolSubito}
+        onClose={() => setShowGolSubito(false)}
+        title="Gol subito"
+      >
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={segnaGolSubitoNormale}
+            className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
+          >
+            <div className="font-semibold">Gol dell'avversario</div>
+            <div className="text-xs text-slate-400">Gol normale subito</div>
+          </button>
+          <button
+            onClick={apriAutogolContro}
+            className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
+          >
+            <div className="font-semibold">Autogol di un nostro</div>
+            <div className="text-xs text-slate-400">
+              Un nostro giocatore ha segnato nella propria porta
+            </div>
+          </button>
+        </div>
+      </Modal>
+
+      {/* ----- MODAL: chi ha fatto autogol contro ----- */}
+      <Modal
+        open={showAutogolContro}
+        onClose={() => setShowAutogolContro(false)}
+        title="Autogol di chi?"
+      >
         <ul className="flex flex-col gap-2 max-h-80 overflow-y-auto">
           {inCampo.map((g) => (
             <li key={g.id}>
               <button
-                onClick={() => segnaGol(g.id!)}
+                onClick={() => segnaAutogolContro(g.id!)}
                 className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg flex items-center gap-3"
               >
                 {g.numero !== undefined && (
@@ -681,9 +844,15 @@ function descriviEvento(e: Evento, rosa: Giocatore[]): string {
     case 'fine_tempo':
       return `Fine ${e.tempo}° tempo`
     case 'gol_fatto':
-      return `⚽ Gol di ${nome(e.giocatoreId)}`
+      return e.assistId !== undefined
+        ? `⚽ Gol di ${nome(e.giocatoreId)} (assist ${nome(e.assistId)})`
+        : `⚽ Gol di ${nome(e.giocatoreId)}`
     case 'gol_subito':
       return `⚽ Gol subito`
+    case 'autogol_pro':
+      return `⚽ Gol (autogol avversario)`
+    case 'autogol_contro':
+      return `⚽ Autogol di ${nome(e.giocatoreId)}`
     case 'cambio':
       return `🔄 ${nome(e.giocatoreEsceId)} ← → ${nome(e.giocatoreEntraId)}`
   }

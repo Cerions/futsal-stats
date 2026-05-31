@@ -132,6 +132,17 @@ function rimappaEvento(
         tipo: 'gol_subito',
         noteGiocatoreAvv: e.noteGiocatoreAvv,
       }
+    case 'autogol_pro':
+      return {
+        ...base,
+        tipo: 'autogol_pro',
+        noteGiocatoreAvv: e.noteGiocatoreAvv,
+      }
+    case 'autogol_contro': {
+      const giocatoreId = mappa.get(e.giocatoreId)
+      if (giocatoreId === undefined) return null
+      return { ...base, tipo: 'autogol_contro', giocatoreId }
+    }
     case 'cambio': {
       const entra = mappa.get(e.giocatoreEntraId)
       const esce = mappa.get(e.giocatoreEsceId)

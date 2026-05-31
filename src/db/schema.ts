@@ -54,4 +54,6 @@ export type Evento =
   | { id?: number; partitaId: number; minuto: number; tipo: 'fine_tempo'; tempo: number }
   | { id?: number; partitaId: number; minuto: number; tipo: 'gol_fatto'; giocatoreId: number; assistId?: number }
   | { id?: number; partitaId: number; minuto: number; tipo: 'gol_subito'; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tipo: 'autogol_pro'; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tipo: 'autogol_contro'; giocatoreId: number }
   | { id?: number; partitaId: number; minuto: number; tipo: 'cambio'; giocatoreEntraId: number; giocatoreEsceId: number }
