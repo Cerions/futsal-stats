@@ -16,6 +16,7 @@ export interface Giocatore {
   id?: number
   stagioneId: number
   nome: string
+  cognome: string
   numero?: number
   ruolo: Ruolo
 }

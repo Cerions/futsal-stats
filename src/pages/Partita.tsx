@@ -11,6 +11,7 @@ import {
 } from '../utils/cronometro'
 import type { Evento, Giocatore, Partita as PartitaType } from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
+import { nomeCompleto, nomeCorto } from '../utils/giocatore'
 
 export default function Partita() {
   const { id } = useParams()
@@ -192,7 +193,7 @@ function PreMatch({
                 </span>
               )}
               <div className="flex-1">
-                <div className="font-medium">{g.nome}</div>
+                <div className="font-medium">{nomeCompleto(g)}</div>
                 <div className="text-xs text-slate-400">{ruoloShort(g.ruolo)}</div>
               </div>
               {isConv && (
@@ -492,7 +493,7 @@ function Live({
                     {g.numero}
                   </span>
                 )}
-                <span className="flex-1">{g.nome}</span>
+                <span className="flex-1">{nomeCorto(g)}</span>
                 <span className="text-xs text-slate-500">{ruoloShort(g.ruolo)}</span>
                 <button
                   onClick={() => {
@@ -521,7 +522,7 @@ function Live({
                         {g.numero}
                       </span>
                     )}
-                    <span className="flex-1 text-sm">{g.nome}</span>
+                    <span className="flex-1 text-sm">{nomeCorto(g)}</span>
                   </li>
                 ))}
               </ul>
@@ -569,7 +570,7 @@ function Live({
                     {g.numero}
                   </span>
                 )}
-                <span>{g.nome}</span>
+                <span>{nomeCorto(g)}</span>
               </button>
             </li>
           ))}
@@ -600,7 +601,7 @@ function Live({
                       {g.numero}
                     </span>
                   )}
-                  <span>{g.nome}</span>
+                  <span>{nomeCorto(g)}</span>
                 </button>
               </li>
             ))}
@@ -670,7 +671,10 @@ function Live({
 
 // Descrive un evento per il log
 function descriviEvento(e: Evento, rosa: Giocatore[]): string {
-  const nome = (id: number) => rosa.find((g) => g.id === id)?.nome ?? '???'
+  const nome = (id: number) => {
+    const g = rosa.find((x) => x.id === id)
+    return g ? nomeCorto(g) : '???'
+  }
   switch (e.tipo) {
     case 'inizio_tempo':
       return `Inizio ${e.tempo}° tempo`

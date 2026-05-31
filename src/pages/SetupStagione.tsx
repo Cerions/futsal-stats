@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
-import { RUOLI, ruoloShort } from '../db/ruoli'
+import { RUOLI, ruoloLabel } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
 import type { Ruolo, Giocatore, SquadraAvversaria } from '../db/schema'
+import { nomeCompleto } from '../utils/giocatore'
 
 export default function SetupStagione() {
   const { id } = useParams()
@@ -26,12 +27,14 @@ export default function SetupStagione() {
   const [showGiocatore, setShowGiocatore] = useState(false)
   const [giocatoreInModifica, setGiocatoreInModifica] = useState<Giocatore | null>(null)
   const [formNome, setFormNome] = useState('')
+  const [formCognome, setFormCognome] = useState('')
   const [formNumero, setFormNumero] = useState('')
   const [formRuolo, setFormRuolo] = useState<Ruolo>('UNIVERSALE')
 
   function apriNuovoGiocatore() {
     setGiocatoreInModifica(null)
     setFormNome('')
+    setFormCognome('')
     setFormNumero('')
     setFormRuolo('UNIVERSALE')
     setShowGiocatore(true)
@@ -40,18 +43,21 @@ export default function SetupStagione() {
   function apriModificaGiocatore(g: Giocatore) {
     setGiocatoreInModifica(g)
     setFormNome(g.nome)
+    setFormCognome(g.cognome)
     setFormNumero(g.numero?.toString() ?? '')
     setFormRuolo(g.ruolo)
     setShowGiocatore(true)
   }
 
-  async function salvaGiocatore() {
+async function salvaGiocatore() {
     const nome = formNome.trim()
-    if (!nome) return
+    const cognome = formCognome.trim()
+    if (!nome || !cognome) return
     const numero = formNumero ? Number(formNumero) : undefined
     if (giocatoreInModifica) {
       await db.giocatori.update(giocatoreInModifica.id!, {
         nome,
+        cognome,
         numero,
         ruolo: formRuolo,
       })
@@ -59,6 +65,7 @@ export default function SetupStagione() {
       await db.giocatori.add({
         stagioneId,
         nome,
+        cognome,
         numero,
         ruolo: formRuolo,
       })
@@ -167,8 +174,8 @@ export default function SetupStagione() {
                   </span>
                 )}
                 <div className="flex-1">
-                  <div className="font-medium">{g.nome}</div>
-                  <div className="text-xs text-slate-400">{ruoloShort(g.ruolo)}</div>
+                  <div className="font-medium">{nomeCompleto(g)}</div>
+                  <div className="text-xs text-slate-400">{ruoloLabel(g.ruolo)}</div>
                 </div>
                 <button
                   onClick={() => apriModificaGiocatore(g)}
@@ -258,6 +265,17 @@ export default function SetupStagione() {
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">
+              Cognome
+            </label>
+            <input
+              type="text"
+              value={formCognome}
+              onChange={(e) => setFormCognome(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
               Numero (opzionale)
             </label>
             <input
@@ -292,7 +310,7 @@ export default function SetupStagione() {
             </button>
             <button
               onClick={salvaGiocatore}
-              disabled={!formNome.trim()}
+              disabled={!formNome.trim() || !formCognome.trim()}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
               {giocatoreInModifica ? 'Salva' : 'Aggiungi'}
