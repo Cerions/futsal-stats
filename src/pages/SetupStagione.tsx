@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { RUOLI, ruoloShort } from '../db/ruoli'
+import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
 import type { Ruolo, Giocatore, SquadraAvversaria } from '../db/schema'
 
@@ -125,8 +126,8 @@ export default function SetupStagione() {
           <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
             ← Home
           </Link>
-          <h1 className="text-2xl font-bold mt-1">{stagione.nome}</h1>
-          <p className="text-sm text-slate-400">Setup stagione</p>
+          <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
+          <p className="text-sm text-slate-400">{stagione.nome} • Setup stagione</p>
         </div>
         <button
           onClick={() => navigate(`/stagione/${stagioneId}`)}

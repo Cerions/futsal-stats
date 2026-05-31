@@ -3,9 +3,9 @@ export type Ruolo = 'PORTIERE' | 'CENTRALE' | 'LATERALE' | 'PIVOT' | 'UNIVERSALE
 export interface Stagione {
   id?: number
   nome: string
+  nomeSquadra: string
   dataCreazione: number
 }
-
 export interface SquadraAvversaria {
   id?: number
   stagioneId: number

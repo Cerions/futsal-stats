@@ -10,6 +10,7 @@ import {
   minutoCorrente,
 } from '../utils/cronometro'
 import type { Evento, Giocatore, Partita as PartitaType } from '../db/schema'
+import { nomeSquadra } from '../utils/stagione'
 
 export default function Partita() {
   const { id } = useParams()
@@ -58,6 +59,7 @@ export default function Partita() {
       rosa={rosa}
       eventi={eventi ?? []}
       avversarioNome={avversario.nome}
+      squadraNome={nomeSquadra(stagione)}
       stagioneId={stagione.id!}
     />
   )
@@ -254,12 +256,14 @@ function Live({
   rosa,
   eventi,
   avversarioNome,
+  squadraNome,
   stagioneId,
 }: {
   partita: PartitaType
   rosa: Giocatore[]
   eventi: Evento[]
   avversarioNome: string
+  squadraNome: string
   stagioneId: number
 }) {
   // Tick locale per aggiornare il cronometro a video ogni secondo (non in DB!)
@@ -412,8 +416,10 @@ function Live({
       {/* Scoreboard */}
       <div className="bg-slate-800 rounded-xl p-4 mt-2 mb-4">
         <div className="flex items-center justify-between">
-          <div className="text-center flex-1">
-            <div className="text-xs text-slate-400">Noi</div>
+          <div className="text-center flex-1 min-w-0">
+            <div className="text-xs text-slate-400 truncate" title={squadraNome}>
+              {squadraNome}
+            </div>
             <div className="text-4xl font-bold">{golFatti}</div>
           </div>
           <div className="text-center">
@@ -428,8 +434,10 @@ function Live({
                   }`}
             </div>
           </div>
-          <div className="text-center flex-1">
-            <div className="text-xs text-slate-400">{avversarioNome}</div>
+          <div className="text-center flex-1 min-w-0">
+            <div className="text-xs text-slate-400 truncate" title={avversarioNome}>
+              {avversarioNome}
+            </div>
             <div className="text-4xl font-bold">{golSubiti}</div>
           </div>
         </div>

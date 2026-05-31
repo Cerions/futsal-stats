@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { eliminaStagione } from '../db/cascade'
+import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
 import type { Stagione } from '../db/schema'
 
@@ -11,10 +12,12 @@ export default function HomePage() {
   const [showNuova, setShowNuova] = useState(false)
   const [showCarica, setShowCarica] = useState(false)
   const [nomeNuova, setNomeNuova] = useState('')
+  const [nomeSquadraNuova, setNomeSquadraNuova] = useState('')
 
   // Modal di rinomina
   const [stagioneInModifica, setStagioneInModifica] = useState<Stagione | null>(null)
   const [nomeModificato, setNomeModificato] = useState('')
+  const [nomeSquadraModificato, setNomeSquadraModificato] = useState('')
 
   const stagioni = useLiveQuery(
     () => db.stagioni.orderBy('dataCreazione').reverse().toArray(),
@@ -23,12 +26,15 @@ export default function HomePage() {
 
   async function creaStagione() {
     const nome = nomeNuova.trim()
-    if (!nome) return
+    const squadra = nomeSquadraNuova.trim()
+    if (!nome || !squadra) return
     const id = await db.stagioni.add({
       nome,
+      nomeSquadra: squadra,
       dataCreazione: Date.now(),
     })
     setNomeNuova('')
+    setNomeSquadraNuova('')
     setShowNuova(false)
     navigate(`/setup-stagione/${id}`)
   }
@@ -36,13 +42,18 @@ export default function HomePage() {
   function apriRinomina(s: Stagione) {
     setStagioneInModifica(s)
     setNomeModificato(s.nome)
+    setNomeSquadraModificato(s.nomeSquadra ?? '')
   }
 
   async function salvaRinomina() {
     if (!stagioneInModifica) return
     const nome = nomeModificato.trim()
-    if (!nome) return
-    await db.stagioni.update(stagioneInModifica.id!, { nome })
+    const squadra = nomeSquadraModificato.trim()
+    if (!nome || !squadra) return
+    await db.stagioni.update(stagioneInModifica.id!, {
+      nome,
+      nomeSquadra: squadra,
+    })
     setStagioneInModifica(null)
   }
 
@@ -84,29 +95,48 @@ export default function HomePage() {
         onClose={() => setShowNuova(false)}
         title="Nuova stagione"
       >
-        <input
-          type="text"
-          value={nomeNuova}
-          onChange={(e) => setNomeNuova(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && creaStagione()}
-          placeholder="Es. 2025/26"
-          autoFocus
-          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:border-emerald-500"
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setShowNuova(false)}
-            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-          >
-            Annulla
-          </button>
-          <button
-            onClick={creaStagione}
-            disabled={!nomeNuova.trim()}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Crea
-          </button>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Nome stagione
+            </label>
+            <input
+              type="text"
+              value={nomeNuova}
+              onChange={(e) => setNomeNuova(e.target.value)}
+              placeholder="Es. 2025/26"
+              autoFocus
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Nome della tua squadra
+            </label>
+            <input
+              type="text"
+              value={nomeSquadraNuova}
+              onChange={(e) => setNomeSquadraNuova(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && creaStagione()}
+              placeholder="Es. Polisportiva Brusafini"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              onClick={() => setShowNuova(false)}
+              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+            >
+              Annulla
+            </button>
+            <button
+              onClick={creaStagione}
+              disabled={!nomeNuova.trim() || !nomeSquadraNuova.trim()}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Crea
+            </button>
+          </div>
         </div>
       </Modal>
 
@@ -136,13 +166,14 @@ export default function HomePage() {
                 >
                   <div className="font-semibold">{s.nome}</div>
                   <div className="text-xs text-slate-400">
-                    Creata il {new Date(s.dataCreazione).toLocaleDateString('it-IT')}
+                    {nomeSquadra(s)} • creata il{' '}
+                    {new Date(s.dataCreazione).toLocaleDateString('it-IT')}
                   </div>
                 </button>
                 <button
                   onClick={() => apriRinomina(s)}
                   className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
-                  title="Rinomina"
+                  title="Modifica"
                 >
                   ✏️
                 </button>
@@ -163,30 +194,48 @@ export default function HomePage() {
       <Modal
         open={stagioneInModifica !== null}
         onClose={() => setStagioneInModifica(null)}
-        title="Rinomina stagione"
+        title="Modifica stagione"
       >
-        <input
-          type="text"
-          value={nomeModificato}
-          onChange={(e) => setNomeModificato(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && salvaRinomina()}
-          autoFocus
-          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:border-emerald-500"
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setStagioneInModifica(null)}
-            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-          >
-            Annulla
-          </button>
-          <button
-            onClick={salvaRinomina}
-            disabled={!nomeModificato.trim()}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-          >
-            Salva
-          </button>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Nome stagione
+            </label>
+            <input
+              type="text"
+              value={nomeModificato}
+              onChange={(e) => setNomeModificato(e.target.value)}
+              autoFocus
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Nome della tua squadra
+            </label>
+            <input
+              type="text"
+              value={nomeSquadraModificato}
+              onChange={(e) => setNomeSquadraModificato(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && salvaRinomina()}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              onClick={() => setStagioneInModifica(null)}
+              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+            >
+              Annulla
+            </button>
+            <button
+              onClick={salvaRinomina}
+              disabled={!nomeModificato.trim() || !nomeSquadraModificato.trim()}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+            >
+              Salva
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

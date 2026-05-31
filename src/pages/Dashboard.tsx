@@ -5,6 +5,7 @@ import { db } from '../db/database'
 import Modal from '../components/Modal'
 import { formatDataOra } from '../utils/format'
 import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
+import { nomeSquadra } from '../utils/stagione'
 
 export default function Dashboard() {
   const { id } = useParams()
@@ -99,7 +100,8 @@ export default function Dashboard() {
           <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
             ← Home
           </Link>
-          <h1 className="text-2xl font-bold mt-1">{stagione.nome}</h1>
+          <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
+          <p className="text-sm text-slate-400">{stagione.nome}</p>
         </div>
         <Link
           to={`/setup-stagione/${stagioneId}`}
