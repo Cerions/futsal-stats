@@ -146,6 +146,7 @@ function PreMatch({
     await db.eventi.add({
       partitaId: partita.id!,
       minuto: 0,
+      tempoGioco: 1,
       tipo: 'inizio_tempo',
       tempo: 1,
     })
@@ -283,6 +284,7 @@ function Live({
 
   const secondi = secondiTrascorsi(partita.cronometro)
   const minuto = minutoCorrente(partita.cronometro)
+  const tempoGioco = partita.cronometro.tempoCorrente ?? 1
   const inCampo = rosa
     .filter((g) => partita.inCampo.includes(g.id!))
     .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
@@ -320,11 +322,12 @@ function Live({
   }
 
   // STEP 2 del gol: registra con o senza assist
-  async function confermaGol(assistId: number | null) {
+ async function confermaGol(assistId: number | null) {
     if (marcatoreId === null) return
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco,
       tipo: 'gol_fatto',
       giocatoreId: marcatoreId,
       assistId: assistId ?? undefined,
@@ -338,10 +341,11 @@ function Live({
   }
 
   // Gol subito: scelta tra "gol normale" e "autogol di un nostro"
-  async function segnaGolSubitoNormale() {
+ async function segnaGolSubitoNormale() {
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco,
       tipo: 'gol_subito',
     })
     setShowGolSubito(false)
@@ -356,6 +360,7 @@ function Live({
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco,
       tipo: 'autogol_contro',
       giocatoreId,
     })
@@ -367,6 +372,7 @@ function Live({
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco,
       tipo: 'autogol_pro',
     })
   }
@@ -376,6 +382,7 @@ function Live({
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco,
       tipo: 'cambio',
       giocatoreEntraId: entraId,
       giocatoreEsceId: esceId,
@@ -388,7 +395,8 @@ function Live({
 
   async function pausaRiprendi() {
     if (partita.cronometro.inPausa) {
-      // riprendi
+      // riprendi (sia che sia una semplice ripresa, sia che sia inizio di un nuovo tempo)
+      const inizioNuovoTempo = partita.cronometro.secondiAccumulati === 0
       await db.partite.update(partita.id!, {
         cronometro: {
           ...partita.cronometro,
@@ -396,6 +404,16 @@ function Live({
           inPausa: false,
         },
       })
+      // se è inizio di un nuovo tempo, registralo come evento
+      if (inizioNuovoTempo && partita.cronometro.tempoCorrente !== null) {
+        await db.eventi.add({
+          partitaId: partita.id!,
+          minuto: 0,
+          tempoGioco: partita.cronometro.tempoCorrente,
+          tipo: 'inizio_tempo',
+          tempo: partita.cronometro.tempoCorrente,
+        })
+      }
     } else {
       // pausa: accumula i secondi trascorsi finora
       await db.partite.update(partita.id!, {
@@ -414,6 +432,7 @@ function Live({
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
+      tempoGioco: tempoFinito,
       tipo: 'fine_tempo',
       tempo: tempoFinito,
     })
@@ -430,21 +449,16 @@ function Live({
         },
       })
     } else {
-      // pausa tra i tempi
+      // pausa tra i tempi: cronometro azzerato, pronto a ripartire da 0
       await db.partite.update(partita.id!, {
         cronometro: {
           tempoCorrente: tempoFinito + 1,
           inizioTempoTimestamp: null,
-          secondiAccumulati: secondi,
+          secondiAccumulati: 0,
           inPausa: true,
         },
       })
-      await db.eventi.add({
-        partitaId: partita.id!,
-        minuto,
-        tipo: 'inizio_tempo',
-        tempo: tempoFinito + 1,
-      })
+      // l'evento 'inizio_tempo' verrà aggiunto quando l'utente preme "Inizio tempo"
     }
     setShowFineTempo(false)
   }
@@ -508,7 +522,13 @@ function Live({
               onClick={pausaRiprendi}
               className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
             >
-              {partita.cronometro.inPausa ? '▶ Riprendi' : '⏸ Pausa'}
+              {partita.cronometro.inPausa
+                ? partita.cronometro.secondiAccumulati === 0 &&
+                  partita.cronometro.tempoCorrente !== null &&
+                  partita.cronometro.tempoCorrente > 1
+                  ? `▶ Inizio ${partita.cronometro.tempoCorrente}° tempo`
+                  : '▶ Riprendi'
+                : '⏸ Pausa'}
             </button>
             <button
               onClick={() => setShowFineTempo(true)}
@@ -604,7 +624,9 @@ function Live({
           <ul className="flex flex-col gap-1 text-sm">
             {eventi.map((e) => (
               <li key={e.id} className="bg-slate-800/50 rounded px-3 py-1.5">
-                <span className="text-slate-500 font-mono mr-2">{e.minuto}'</span>
+                <span className="text-slate-500 font-mono mr-2">
+                  T{e.tempoGioco} • {e.minuto}'
+                </span>
                 {descriviEvento(e, rosa)}
               </li>
             ))}

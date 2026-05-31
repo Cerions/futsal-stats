@@ -113,7 +113,12 @@ function rimappaEvento(
   mappa: Map<number, number>
 ): Evento | null {
   // gli id degli eventi vengono rigenerati: rimuoviamo il vecchio
-  const base = { partitaId: nuovaPartitaId, minuto: e.minuto }
+  // tempoGioco default a 1 per export vecchi che non avevano il campo
+  const base = {
+    partitaId: nuovaPartitaId,
+    minuto: e.minuto,
+    tempoGioco: e.tempoGioco ?? 1,
+  }
 
   switch (e.tipo) {
     case 'inizio_tempo':
