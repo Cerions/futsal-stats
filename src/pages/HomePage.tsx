@@ -6,6 +6,8 @@ import { eliminaStagione } from '../db/cascade'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
 import type { Stagione } from '../db/schema'
+import { esportaStagione, nomeFileExport, scaricaJSON } from '../db/export'
+import { importaStagione, validaImport, leggiFileJSON } from '../db/import'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -13,6 +15,8 @@ export default function HomePage() {
   const [showCarica, setShowCarica] = useState(false)
   const [nomeNuova, setNomeNuova] = useState('')
   const [nomeSquadraNuova, setNomeSquadraNuova] = useState('')
+  // Per il file picker (input nascosto)
+  const fileInputId = 'import-file-input'
 
   // Modal di rinomina
   const [stagioneInModifica, setStagioneInModifica] = useState<Stagione | null>(null)
@@ -69,6 +73,33 @@ export default function HomePage() {
       return
     }
     await eliminaStagione(s.id!)
+  }
+
+  async function esportaStagioneFile(s: Stagione) {
+    try {
+      const data = await esportaStagione(s.id!)
+      const filename = nomeFileExport(s.nome, nomeSquadra(s))
+      scaricaJSON(data, filename)
+    } catch (err) {
+      alert(`Errore durante l'export: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  async function importaDaFile(file: File) {
+    try {
+      const data = await leggiFileJSON(file)
+      if (!validaImport(data)) {
+        alert('Il file non è un export valido di Futsal Stats.')
+        return
+      }
+      const nuovaStagioneId = await importaStagione(data)
+      setShowCarica(false)
+      navigate(`/stagione/${nuovaStagioneId}`)
+    } catch (err) {
+      alert(
+        `Errore durante l'import: ${err instanceof Error ? err.message : err}`
+      )
+    }
   }
 
   return (
@@ -148,45 +179,82 @@ export default function HomePage() {
       >
         {stagioni === undefined ? (
           <p className="text-slate-400">Caricamento...</p>
-        ) : stagioni.length === 0 ? (
-          <p className="text-slate-400">Nessuna stagione salvata.</p>
         ) : (
-          <ul className="flex flex-col gap-2 max-h-96 overflow-y-auto">
-            {stagioni.map((s) => (
-              <li
-                key={s.id}
-                className="bg-slate-900 rounded-lg flex items-center gap-2 pr-2"
+          <>
+            {stagioni.length === 0 ? (
+              <p className="text-slate-400 mb-4">Nessuna stagione salvata.</p>
+            ) : (
+              <ul className="flex flex-col gap-2 max-h-80 overflow-y-auto mb-4">
+                {stagioni.map((s) => (
+                  <li
+                    key={s.id}
+                    className="bg-slate-900 rounded-lg flex items-center gap-1 pr-1"
+                  >
+                    <button
+                      onClick={() => {
+                        setShowCarica(false)
+                        navigate(`/stagione/${s.id}`)
+                      }}
+                      className="flex-1 text-left hover:bg-slate-700 px-4 py-3 rounded-lg"
+                    >
+                      <div className="font-semibold">{s.nome}</div>
+                      <div className="text-xs text-slate-400">
+                        {nomeSquadra(s)} • creata il{' '}
+                        {new Date(s.dataCreazione).toLocaleDateString('it-IT')}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => esportaStagioneFile(s)}
+                      className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
+                      title="Esporta backup"
+                    >
+                      ⬇️
+                    </button>
+                    <button
+                      onClick={() => apriRinomina(s)}
+                      className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
+                      title="Modifica"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => eliminaStagioneConferma(s)}
+                      className="text-slate-400 hover:text-red-400 px-2 py-1 text-sm"
+                      title="Elimina"
+                    >
+                      🗑️
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Bottone importa da file */}
+            <div className="border-t border-slate-700 pt-4">
+              <label
+                htmlFor={fileInputId}
+                className="block w-full text-center bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg font-semibold cursor-pointer"
               >
-                <button
-                  onClick={() => {
-                    setShowCarica(false)
-                    navigate(`/stagione/${s.id}`)
-                  }}
-                  className="flex-1 text-left hover:bg-slate-700 px-4 py-3 rounded-lg"
-                >
-                  <div className="font-semibold">{s.nome}</div>
-                  <div className="text-xs text-slate-400">
-                    {nomeSquadra(s)} • creata il{' '}
-                    {new Date(s.dataCreazione).toLocaleDateString('it-IT')}
-                  </div>
-                </button>
-                <button
-                  onClick={() => apriRinomina(s)}
-                  className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
-                  title="Modifica"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => eliminaStagioneConferma(s)}
-                  className="text-slate-400 hover:text-red-400 px-2 py-1 text-sm"
-                  title="Elimina"
-                >
-                  🗑️
-                </button>
-              </li>
-            ))}
-          </ul>
+                ⬆️ Importa da file
+              </label>
+              <input
+                id={fileInputId}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    importaDaFile(file)
+                    e.target.value = '' // reset così puoi reimportare stesso file
+                  }
+                }}
+              />
+              <p className="text-xs text-slate-500 mt-2 text-center">
+                Carica un backup .json esportato in precedenza
+              </p>
+            </div>
+          </>
         )}
       </Modal>
 
