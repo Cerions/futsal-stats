@@ -15,3 +15,18 @@ export function ruoloLabel(r: Ruolo): string {
 export function ruoloShort(r: Ruolo): string {
   return RUOLI.find((x) => x.value === r)?.short ?? r
 }
+
+/**
+ * Ordine canonico dei ruoli per la visualizzazione: P, C, U, L, PV.
+ */
+const ORDINE_RUOLI: Record<Ruolo, number> = {
+  PORTIERE: 0,
+  CENTRALE: 1,
+  UNIVERSALE: 2,
+  LATERALE: 3,
+  PIVOT: 4,
+}
+
+export function ordineRuolo(r: Ruolo): number {
+  return ORDINE_RUOLI[r] ?? 99
+}

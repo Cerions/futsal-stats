@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import Modal from '../components/Modal'
-import { ruoloShort } from '../db/ruoli'
+import { ruoloShort, ordineRuolo } from '../db/ruoli'
 import {
   secondiTrascorsi,
   formatCronometro,
@@ -151,6 +151,10 @@ function PreMatch({
     })
   }
 
+  const rosaOrdinata = [...rosa].sort(
+    (a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo)
+  )
+
   return (
     <div className="max-w-2xl mx-auto p-6 pb-32">
       <Link to={`/stagione/${stagioneId}`} className="text-sm text-slate-400">
@@ -171,7 +175,7 @@ function PreMatch({
 
       {/* Lista rosa */}
       <ul className="flex flex-col gap-2 mb-6">
-        {rosa.map((g) => {
+        {rosaOrdinata.map((g) => {
           const isConv = convocati.has(g.id!)
           const isTit = titolari.has(g.id!)
           return (
@@ -279,10 +283,14 @@ function Live({
 
   const secondi = secondiTrascorsi(partita.cronometro)
   const minuto = minutoCorrente(partita.cronometro)
-  const inCampo = rosa.filter((g) => partita.inCampo.includes(g.id!))
-  const panchina = rosa.filter(
-    (g) => partita.convocati.includes(g.id!) && !partita.inCampo.includes(g.id!)
-  )
+  const inCampo = rosa
+    .filter((g) => partita.inCampo.includes(g.id!))
+    .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
+  const panchina = rosa
+    .filter(
+      (g) => partita.convocati.includes(g.id!) && !partita.inCampo.includes(g.id!)
+    )
+    .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
 
   // Risultato calcolato dagli eventi
   // Gol nostri = gol_fatto + autogol_pro (avversario in proprio)

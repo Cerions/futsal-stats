@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
-import { RUOLI, ruoloLabel } from '../db/ruoli'
+import { RUOLI, ruoloLabel, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
 import type { Ruolo, Giocatore, SquadraAvversaria } from '../db/schema'
@@ -49,7 +49,7 @@ export default function SetupStagione() {
     setShowGiocatore(true)
   }
 
-async function salvaGiocatore() {
+  async function salvaGiocatore() {
     const nome = formNome.trim()
     const cognome = formCognome.trim()
     if (!nome || !cognome) return
@@ -163,36 +163,38 @@ async function salvaGiocatore() {
 
         {giocatori && giocatori.length > 0 ? (
           <ul className="flex flex-col gap-2">
-            {giocatori.map((g) => (
-              <li
-                key={g.id}
-                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
-              >
-                {g.numero !== undefined && (
-                  <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                    {g.numero}
-                  </span>
-                )}
-                <div className="flex-1">
-                  <div className="font-medium">{nomeCompleto(g)}</div>
-                  <div className="text-xs text-slate-400">{ruoloLabel(g.ruolo)}</div>
-                </div>
-                <button
-                  onClick={() => apriModificaGiocatore(g)}
-                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                  title="Modifica"
+            {[...giocatori]
+              .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
+              .map((g) => (
+                <li
+                  key={g.id}
+                  className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
                 >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => eliminaGiocatore(g.id!)}
-                  className="text-slate-400 hover:text-red-400 text-sm px-2"
-                  title="Elimina"
-                >
-                  🗑️
-                </button>
-              </li>
-            ))}
+                  {g.numero !== undefined && (
+                    <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                      {g.numero}
+                    </span>
+                  )}
+                  <div className="flex-1">
+                    <div className="font-medium">{nomeCompleto(g)}</div>
+                    <div className="text-xs text-slate-400">{ruoloLabel(g.ruolo)}</div>
+                  </div>
+                  <button
+                    onClick={() => apriModificaGiocatore(g)}
+                    className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                    title="Modifica"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => eliminaGiocatore(g.id!)}
+                    className="text-slate-400 hover:text-red-400 text-sm px-2"
+                    title="Elimina"
+                  >
+                    🗑️
+                  </button>
+                </li>
+              ))}
           </ul>
         ) : (
           <p className="text-slate-500 text-sm italic">Nessun giocatore in rosa.</p>
