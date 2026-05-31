@@ -622,7 +622,7 @@ function Live({
             Log eventi
           </h2>
           <ul className="flex flex-col gap-1 text-sm">
-            {eventi.map((e) => (
+            {[...eventi].reverse().map((e) => (
               <li key={e.id} className="bg-slate-800/50 rounded px-3 py-1.5">
                 <span className="text-slate-500 font-mono mr-2">
                   T{e.tempoGioco} • {e.minuto}'
