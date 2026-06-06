@@ -75,6 +75,7 @@ export async function importaStagione(data: ExportData): Promise<number> {
           stagioneId: nuovaStagioneId,
           avversarioId: mappaAvversari.get(p.avversarioId) ?? 0,
           dataOra: p.dataOra,
+          tag: p.tag,
           config: p.config,
           convocati: p.convocati.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
           titolari: p.titolari.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),

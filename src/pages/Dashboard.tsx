@@ -6,6 +6,9 @@ import Modal from '../components/Modal'
 import { formatDataOra } from '../utils/format'
 import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
 import { nomeSquadra } from '../utils/stagione'
+import TagBadge from '../components/TagBadge'
+import TagSelector from '../components/TagSelector'
+import type { TagPartita } from '../db/schema'
 
 export default function Dashboard() {
   const { id } = useParams()
@@ -36,6 +39,7 @@ export default function Dashboard() {
   const [numeroTempi, setNumeroTempi] = useState(2)
   const [durataTempo, setDurataTempo] = useState(20)
   const [tempoEffettivo, setTempoEffettivo] = useState(true)
+  const [tagPartita, setTagPartita] = useState<TagPartita | undefined>(undefined)
 
   async function creaPartita() {
     if (avversarioId === '') return
@@ -43,6 +47,7 @@ export default function Dashboard() {
       stagioneId,
       avversarioId: Number(avversarioId),
       dataOra: new Date(dataPartita).getTime(),
+      tag: tagPartita,
       config: {
         numeroTempi,
         durataTempoMinuti: durataTempo,
@@ -62,6 +67,7 @@ export default function Dashboard() {
     setShowNuovaPartita(false)
     // Reset form per la prossima
     setAvversarioId('')
+    setTagPartita(undefined)
     navigate(`/partita/${id}`)
   }
 
@@ -146,7 +152,10 @@ export default function Dashboard() {
                   onClick={() => navigate(`/partita/${p.id}`)}
                   className="text-left flex-1"
                 >
-                  <div className="font-semibold">vs {nomeAvversario(p.avversarioId)}</div>
+                  <div className="font-semibold flex items-center gap-2 flex-wrap">
+                    vs {nomeAvversario(p.avversarioId)}
+                    <TagBadge tag={p.tag} />
+                  </div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
                 <span className="text-amber-400 text-sm">Riprendi →</span>
@@ -172,7 +181,10 @@ export default function Dashboard() {
                   onClick={() => navigate(`/partita/${p.id}`)}
                   className="text-left flex-1"
                 >
-                  <div className="font-semibold">vs {nomeAvversario(p.avversarioId)}</div>
+                  <div className="font-semibold flex items-center gap-2 flex-wrap">
+                    vs {nomeAvversario(p.avversarioId)}
+                    <TagBadge tag={p.tag} />
+                  </div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
                 <button
@@ -203,7 +215,10 @@ export default function Dashboard() {
                   onClick={() => navigate(`/partita/${p.id}`)}
                   className="text-left flex-1"
                 >
-                  <div className="font-semibold">vs {nomeAvversario(p.avversarioId)}</div>
+                  <div className="font-semibold flex items-center gap-2 flex-wrap">
+                    vs {nomeAvversario(p.avversarioId)}
+                    <TagBadge tag={p.tag} />
+                  </div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
                 <button
@@ -295,6 +310,11 @@ export default function Dashboard() {
             />
             Tempo effettivo (cronometro si ferma quando la palla esce)
           </label>
+
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">Tipo partita</label>
+            <TagSelector value={tagPartita} onChange={setTagPartita} />
+          </div>
 
           <div className="flex justify-end gap-2 mt-2">
             <button

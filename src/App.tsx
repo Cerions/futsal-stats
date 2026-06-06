@@ -4,6 +4,7 @@ import SetupStagione from './pages/SetupStagione'
 import Dashboard from './pages/Dashboard'
 import Partita from './pages/Partita'
 import UpdatePrompt from './components/UpdatePrompt'
+import ModificaPartita from './pages/ModificaPartita'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/setup-stagione/:id" element={<SetupStagione />} />
           <Route path="/stagione/:id" element={<Dashboard />} />
           <Route path="/partita/:id" element={<Partita />} />
+          <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
         </Routes>
         <UpdatePrompt />
       </div>

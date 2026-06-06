@@ -1,9 +1,8 @@
-@'
 # Futsal Stats
 
 App PWA per registrare statistiche di partite di calcio a 5.
 
-**Live:** https://stellar-pony-de245a.netlify.app/
+**Live:** https://futsalstatsrobur.netlify.app/
 
 ## Stack
 - React + TypeScript + Vite
@@ -15,17 +14,21 @@ App PWA per registrare statistiche di partite di calcio a 5.
 ## Stato attuale
 - [x] Scheletro 4 schermate con routing
 - [x] Schema DB (stagioni, avversari, giocatori, partite, eventi)
-- [x] Creazione/caricamento/modifica/eliminazione stagioni
-- [x] Gestione rosa giocatori e squadre avversarie (CRUD)
-- [x] Creazione partite con configurazione tempi
-- [x] Schermata pre-match: convocati e titolari
-- [x] Schermata live: cronometro, gol, gol subiti, cambi, fine tempo
+- [x] CRUD completo: stagioni (con nome squadra), rosa giocatori (nome, cognome, numero, ruolo), squadre avversarie, partite
+- [x] Tag partita (Amichevole, Coppa, Campionato) con badge colorati
+- [x] Schermata pre-match: convocati (max 12) e titolari (5)
+- [x] Schermata live: cronometro per tempo, gol con assist, gol subiti, autogol pro/contro, cambi
+- [x] Cronometro che riparte da 0 ad ogni nuovo tempo
+- [x] Eventi taggati con tempo di gioco corrente (campo tempoGioco)
+- [x] Log eventi in ordine inverso cronologico
+- [x] Ordinamento giocatori per ruolo (P, C, U, L, PV)
+- [x] Modifica partita conclusa: cambia avversario/data/tag, aggiungi/modifica/elimina eventi
+- [x] Export/import stagioni come JSON (cloud "povero" tra dispositivi)
 - [x] PWA installabile su Android
 - [x] Deploy automatico su Netlify
-- [ ] Nome squadra personalizzabile per stagione
+- [ ] Statistiche aggregate giocatori (gol, assist, minuti, plus/minus)
 - [ ] xG semplificato con zone di tiro
-- [ ] Export/import JSON per backup
-- [ ] Statistiche aggregate (marcatori, minutaggi)
+- [ ] Eventuale cloud sync via Supabase
 
 ## Sviluppo locale
 ```bash
@@ -37,4 +40,3 @@ npm run dev
 ```bash
 npm run build
 ```
-'@ | Out-File -Encoding utf8 -FilePath README.md

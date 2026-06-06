@@ -12,6 +12,8 @@ import {
 import type { Evento, Giocatore, Partita as PartitaType } from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
 import { nomeCompleto, nomeCorto } from '../utils/giocatore'
+import TagBadge from '../components/TagBadge'
+import { descriviEvento } from '../utils/evento'
 
 export default function Partita() {
   const { id } = useParams()
@@ -161,7 +163,10 @@ function PreMatch({
       <Link to={`/stagione/${stagioneId}`} className="text-sm text-slate-400">
         ← Stagione
       </Link>
-      <h1 className="text-2xl font-bold mt-1">vs {avversarioNome}</h1>
+      <div className="flex items-center gap-2 flex-wrap mt-1">
+        <h1 className="text-2xl font-bold">vs {avversarioNome}</h1>
+        <TagBadge tag={partita.tag} />
+      </div>
       <p className="text-sm text-slate-400 mb-6">Setup pre-partita</p>
 
       {/* Contatori */}
@@ -306,9 +311,9 @@ function Live({
 
   // ----- STATE: modali -----
   const [showGol, setShowGol] = useState(false)
-  const [marcatoreId, setMarcatoreId] = useState<number | null>(null) // step 2 del gol = scegli assist
+  const [marcatoreId, setMarcatoreId] = useState<number | null>(null)
   const [showGolSubito, setShowGolSubito] = useState(false)
-  const [showAutogolContro, setShowAutogolContro] = useState(false) // chi tra i nostri ha segnato in proprio
+  const [showAutogolContro, setShowAutogolContro] = useState(false)
   const [showCambio, setShowCambio] = useState(false)
   const [esceId, setEsceId] = useState<number | null>(null)
   const [showFineTempo, setShowFineTempo] = useState(false)
@@ -322,7 +327,7 @@ function Live({
   }
 
   // STEP 2 del gol: registra con o senza assist
- async function confermaGol(assistId: number | null) {
+  async function confermaGol(assistId: number | null) {
     if (marcatoreId === null) return
     await db.eventi.add({
       partitaId: partita.id!,
@@ -341,7 +346,7 @@ function Live({
   }
 
   // Gol subito: scelta tra "gol normale" e "autogol di un nostro"
- async function segnaGolSubitoNormale() {
+  async function segnaGolSubitoNormale() {
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
@@ -458,7 +463,6 @@ function Live({
           inPausa: true,
         },
       })
-      // l'evento 'inizio_tempo' verrà aggiunto quando l'utente preme "Inizio tempo"
     }
     setShowFineTempo(false)
   }
@@ -483,6 +487,12 @@ function Live({
       <Link to={`/stagione/${stagioneId}`} className="text-sm text-slate-400">
         ← Stagione
       </Link>
+
+      {partita.tag && (
+        <div className="mt-2">
+          <TagBadge tag={partita.tag} />
+        </div>
+      )}
 
       {/* Scoreboard */}
       <div className="bg-slate-800 rounded-xl p-4 mt-2 mb-4">
@@ -605,14 +615,34 @@ function Live({
             </>
           )}
 
-          {/* Bottone fine partita */}
-          <button
-            onClick={() => setShowFinePartita(true)}
-            className="w-full bg-slate-700 hover:bg-red-700 py-3 rounded-lg font-semibold mt-4"
-          >
-            Termina partita
-          </button>
+          {/* Bottoni gestione partita */}
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <Link
+              to={`/partita/${partita.id}/modifica`}
+              className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
+            >
+              Modifica
+            </Link>
+            <button
+              onClick={() => setShowFinePartita(true)}
+              className="bg-slate-700 hover:bg-red-700 py-3 rounded-lg font-semibold"
+            >
+              Termina partita
+            </button>
+          </div>
         </>
+      )}
+
+      {/* Partita finita: bottone modifica a tutta larghezza */}
+      {finita && (
+        <div className="mb-4">
+          <Link
+            to={`/partita/${partita.id}/modifica`}
+            className="block w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
+          >
+            Modifica partita
+          </Link>
+        </div>
       )}
 
       {/* Eventi log */}
@@ -648,7 +678,6 @@ function Live({
         }
       >
         {marcatoreId === null ? (
-          // STEP 1: marcatore tra i 5 in campo + opzione autogol avversario
           <>
             <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
               {inCampo.map((g) => (
@@ -680,7 +709,6 @@ function Live({
             </div>
           </>
         ) : (
-          // STEP 2: assistman opzionale tra gli altri 4 in campo
           <>
             <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
               {inCampo
@@ -860,30 +888,4 @@ function Live({
       </Modal>
     </div>
   )
-}
-
-// Descrive un evento per il log
-function descriviEvento(e: Evento, rosa: Giocatore[]): string {
-  const nome = (id: number) => {
-    const g = rosa.find((x) => x.id === id)
-    return g ? nomeCorto(g) : '???'
-  }
-  switch (e.tipo) {
-    case 'inizio_tempo':
-      return `Inizio ${e.tempo}° tempo`
-    case 'fine_tempo':
-      return `Fine ${e.tempo}° tempo`
-    case 'gol_fatto':
-      return e.assistId !== undefined
-        ? `⚽ Gol di ${nome(e.giocatoreId)} (assist ${nome(e.assistId)})`
-        : `⚽ Gol di ${nome(e.giocatoreId)}`
-    case 'gol_subito':
-      return `⚽ Gol subito`
-    case 'autogol_pro':
-      return `⚽ Gol (autogol avversario)`
-    case 'autogol_contro':
-      return `⚽ Autogol di ${nome(e.giocatoreId)}`
-    case 'cambio':
-      return `🔄 ${nome(e.giocatoreEsceId)} ← → ${nome(e.giocatoreEntraId)}`
-  }
 }

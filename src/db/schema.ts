@@ -36,11 +36,20 @@ export interface Cronometro {
   inPausa: boolean
 }
 
+export type TagPartita = 'Amichevole' | 'Coppa' | 'Campionato'
+
+export const TAG_PARTITA: { value: TagPartita; colore: string; coloreBg: string }[] = [
+  { value: 'Amichevole', colore: 'text-blue-100', coloreBg: 'bg-blue-600' },
+  { value: 'Coppa', colore: 'text-red-100', coloreBg: 'bg-red-600' },
+  { value: 'Campionato', colore: 'text-emerald-100', coloreBg: 'bg-emerald-600' },
+]
+
 export interface Partita {
   id?: number
   stagioneId: number
   avversarioId: number
   dataOra: number
+  tag?: TagPartita
   config: ConfigPartita
   convocati: number[]
   titolari: number[]
