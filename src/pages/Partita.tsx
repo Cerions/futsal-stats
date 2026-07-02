@@ -290,6 +290,10 @@ function Live({
   const secondi = secondiTrascorsi(partita.cronometro)
   const minuto = minutoCorrente(partita.cronometro)
   const tempoGioco = partita.cronometro.tempoCorrente ?? 1
+  // Durata prevista del tempo corrente in secondi
+  const durataTempoSecondi = partita.config.durataTempoMinuti * 60
+  const sforato = secondi > durataTempoSecondi
+  const quasiFinito = !sforato && secondi > durataTempoSecondi - 60 // ultimo minuto
   const inCampo = rosa
     .filter((g) => partita.inCampo.includes(g.id!))
     .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
@@ -504,12 +508,24 @@ function Live({
             <div className="text-4xl font-bold">{golFatti}</div>
           </div>
           <div className="text-center">
-            <div className="font-mono text-2xl font-bold">
+            <div
+              className={`font-mono text-2xl font-bold ${
+                sforato
+                  ? 'text-red-400 animate-pulse'
+                  : quasiFinito
+                  ? 'text-amber-400'
+                  : ''
+              }`}
+            >
               {formatCronometro(secondi)}
             </div>
             <div className="text-xs text-slate-400">
               {finita
                 ? 'Finita'
+                : partita.cronometro.inPausa &&
+                  partita.cronometro.secondiAccumulati === 0 &&
+                  (partita.cronometro.tempoCorrente ?? 1) > 1
+                ? `Intervallo → ${partita.cronometro.tempoCorrente}° tempo`
                 : `${partita.cronometro.tempoCorrente}° tempo${
                     partita.cronometro.inPausa ? ' • pausa' : ''
                   }`}
@@ -563,6 +579,20 @@ function Live({
               ⚽ Gol subito
             </button>
           </div>
+
+          {/* Banner intervallo */}
+          {partita.cronometro.inPausa &&
+            partita.cronometro.secondiAccumulati === 0 &&
+            (partita.cronometro.tempoCorrente ?? 1) > 1 && (
+              <div className="bg-amber-900/40 border border-amber-700/60 rounded-lg p-3 mb-4 text-sm">
+                <p className="font-semibold text-amber-200">
+                  🕐 Intervallo prima del {partita.cronometro.tempoCorrente}° tempo
+                </p>
+                <p className="text-amber-200/80 text-xs mt-1">
+                  Puoi fare cambi ora. Premi "Inizio {partita.cronometro.tempoCorrente}° tempo" quando pronto.
+                </p>
+              </div>
+            )}
 
           {/* In campo */}
           <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2 mt-4">

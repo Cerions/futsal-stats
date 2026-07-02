@@ -109,12 +109,20 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
           <p className="text-sm text-slate-400">{stagione.nome}</p>
         </div>
-        <Link
-          to={`/setup-stagione/${stagioneId}`}
-          className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5"
-        >
-          Setup
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            to={`/stagione/${stagioneId}/statistiche`}
+            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5"
+          >
+            📊 Stats
+          </Link>
+          <Link
+            to={`/setup-stagione/${stagioneId}`}
+            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5"
+          >
+            Setup
+          </Link>
+        </div>
       </div>
 
       {/* Bottone nuova partita */}
@@ -288,7 +296,7 @@ export default function Dashboard() {
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">
-                Durata (min)
+                Durata per tempo (min)
               </label>
               <input
                 type="number"
@@ -300,6 +308,9 @@ export default function Dashboard() {
               />
             </div>
           </div>
+          <p className="text-xs text-slate-500 -mt-2">
+            Partita totale: {numeroTempi * durataTempo} minuti
+          </p>
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input

@@ -1,8 +1,9 @@
+@'
 # Futsal Stats
 
 App PWA per registrare statistiche di partite di calcio a 5.
 
-**Live:** https://futsalstatsrobur.netlify.app/
+**Live:** https://TUOSITO.netlify.app
 
 ## Stack
 - React + TypeScript + Vite
@@ -18,15 +19,16 @@ App PWA per registrare statistiche di partite di calcio a 5.
 - [x] Tag partita (Amichevole, Coppa, Campionato) con badge colorati
 - [x] Schermata pre-match: convocati (max 12) e titolari (5)
 - [x] Schermata live: cronometro per tempo, gol con assist, gol subiti, autogol pro/contro, cambi
-- [x] Cronometro che riparte da 0 ad ogni nuovo tempo
+- [x] Cronometro che riparte da 0 ad ogni nuovo tempo con avviso visivo di fine tempo
+- [x] Gestione intervallo con banner esplicito per fare cambi
 - [x] Eventi taggati con tempo di gioco corrente (campo tempoGioco)
 - [x] Log eventi in ordine inverso cronologico
 - [x] Ordinamento giocatori per ruolo (P, C, U, L, PV)
 - [x] Modifica partita conclusa: cambia avversario/data/tag, aggiungi/modifica/elimina eventi
 - [x] Export/import stagioni come JSON (cloud "povero" tra dispositivi)
+- [x] Statistiche aggregate giocatori: presenze, partite giocate, minuti, gol, assist, autogol, gol pro/contro in campo, plus/minus, con ordinamento per colonna
 - [x] PWA installabile su Android
 - [x] Deploy automatico su Netlify
-- [ ] Statistiche aggregate giocatori (gol, assist, minuti, plus/minus)
 - [ ] xG semplificato con zone di tiro
 - [ ] Eventuale cloud sync via Supabase
 
@@ -40,3 +42,4 @@ npm run dev
 ```bash
 npm run build
 ```
+'@ | Out-File -Encoding utf8 -FilePath README.md
