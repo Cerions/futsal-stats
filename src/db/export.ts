@@ -5,17 +5,30 @@ import type {
   SquadraAvversaria,
   Partita,
   Evento,
+  SchemaCorner,
 } from './schema'
+
+/**
+ * Versione del formato di export.
+ * 1 → formato originale
+ * 2 → aggiunge i tiri e la zona sui gol (xG)
+ * 3 → aggiunge schemi d'angolo, eventi corner e origine delle conclusioni
+ * L'import accetta tutte le versioni fino a questa: i file più vecchi
+ * semplicemente non hanno i campi nuovi.
+ */
+export const VERSIONE_EXPORT = 3
 
 export interface ExportData {
   formato: 'futsal-stats-export'
-  versione: 1
+  versione: number
   dataExport: number
   stagione: Omit<Stagione, 'id'>
   giocatori: Giocatore[]
   avversari: SquadraAvversaria[]
   partite: Partita[]
   eventi: Evento[]
+  /** assente nei file v1 e v2 */
+  schemi?: SchemaCorner[]
 }
 
 /**
@@ -33,6 +46,7 @@ export async function esportaStagione(stagioneId: number): Promise<ExportData> {
     .where('stagioneId')
     .equals(stagioneId)
     .toArray()
+  const schemi = await db.schemi.where('stagioneId').equals(stagioneId).toArray()
   const partite = await db.partite
     .where('stagioneId')
     .equals(stagioneId)
@@ -49,13 +63,14 @@ export async function esportaStagione(stagioneId: number): Promise<ExportData> {
 
   return {
     formato: 'futsal-stats-export',
-    versione: 1,
+    versione: VERSIONE_EXPORT,
     dataExport: Date.now(),
     stagione: stagioneSenzaId,
     giocatori,
     avversari,
     partite,
     eventi,
+    schemi,
   }
 }
 

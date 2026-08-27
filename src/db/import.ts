@@ -1,4 +1,5 @@
 import { db } from './database'
+import { VERSIONE_EXPORT } from './export'
 import type { ExportData } from './export'
 import type { Evento, Partita } from './schema'
 
@@ -25,7 +26,7 @@ export function validaImport(data: unknown): data is ExportData {
  * Ritorna l'id della nuova stagione creata.
  */
 export async function importaStagione(data: ExportData): Promise<number> {
-  if (data.versione !== 1) {
+  if (data.versione > VERSIONE_EXPORT) {
     throw new Error(
       `Versione export non supportata: ${data.versione}. Aggiorna l'app.`
     )
@@ -33,7 +34,7 @@ export async function importaStagione(data: ExportData): Promise<number> {
 
   return await db.transaction(
     'rw',
-    [db.stagioni, db.giocatori, db.avversari, db.partite, db.eventi],
+    [db.stagioni, db.giocatori, db.avversari, db.partite, db.eventi, db.schemi],
     async () => {
       // 1. Crea la stagione e prendi il nuovo id
       const nuovaStagioneId = await db.stagioni.add({
@@ -67,6 +68,18 @@ export async function importaStagione(data: ExportData): Promise<number> {
         mappaAvversari.set(vecchioId, nuovoId)
       }
 
+      // 3-bis. Mappa schemi d'angolo (assenti negli export v1 e v2)
+      const mappaSchemi = new Map<number, number>()
+      for (const s of data.schemi ?? []) {
+        const vecchioId = s.id!
+        const nuovoId = await db.schemi.add({
+          stagioneId: nuovaStagioneId,
+          nome: s.nome,
+          note: s.note,
+        })
+        mappaSchemi.set(vecchioId, nuovoId)
+      }
+
       // 4. Mappa partite (riscrivendo avversarioId, convocati, titolari, inCampo)
       const mappaPartite = new Map<number, number>()
       for (const p of data.partite) {
@@ -92,8 +105,13 @@ export async function importaStagione(data: ExportData): Promise<number> {
         const nuovaPartitaId = mappaPartite.get(e.partitaId)
         if (nuovaPartitaId === undefined) continue // evento orfano, salta
 
-        // riscriviamo i riferimenti a giocatori dentro l'evento, tipo per tipo
-        const eventoRimappato = rimappaEvento(e, nuovaPartitaId, mappaGiocatori)
+        // riscriviamo i riferimenti a giocatori e schemi dentro l'evento
+        const eventoRimappato = rimappaEvento(
+          e,
+          nuovaPartitaId,
+          mappaGiocatori,
+          mappaSchemi
+        )
         if (eventoRimappato) {
           await db.eventi.add(eventoRimappato)
         }
@@ -111,7 +129,8 @@ export async function importaStagione(data: ExportData): Promise<number> {
 function rimappaEvento(
   e: Evento,
   nuovaPartitaId: number,
-  mappa: Map<number, number>
+  mappa: Map<number, number>,
+  mappaSchemi: Map<number, number>
 ): Evento | null {
   // gli id degli eventi vengono rigenerati: rimuoviamo il vecchio
   // tempoGioco default a 1 per export vecchi che non avevano il campo
@@ -120,6 +139,17 @@ function rimappaEvento(
     minuto: e.minuto,
     tempoGioco: e.tempoGioco ?? 1,
   }
+
+  // Uno schema che non si riesce a rimappare viene semplicemente perso:
+  // l'evento resta, senza schema associato.
+  const schemaRimappato = (id?: number) =>
+    id === undefined ? undefined : mappaSchemi.get(id)
+
+  // origine e punto di battuta non contengono id, si copiano così come sono
+  const origine =
+    e.tipo === 'tiro' || e.tipo === 'gol_fatto'
+      ? { origine: e.origine, zonaBattuta: e.zonaBattuta, schemaId: schemaRimappato(e.schemaId) }
+      : {}
 
   switch (e.tipo) {
     case 'inizio_tempo':
@@ -130,7 +160,7 @@ function rimappaEvento(
       const giocatoreId = mappa.get(e.giocatoreId)
       if (giocatoreId === undefined) return null
       const assistId = e.assistId !== undefined ? mappa.get(e.assistId) : undefined
-      return { ...base, tipo: 'gol_fatto', giocatoreId, assistId }
+      return { ...base, ...origine, tipo: 'gol_fatto', giocatoreId, assistId, zona: e.zona }
     }
     case 'gol_subito':
       return {
@@ -160,6 +190,20 @@ function rimappaEvento(
         giocatoreEsceId: esce,
       }
     }
+    case 'tiro': {
+      const giocatoreId = mappa.get(e.giocatoreId)
+      if (giocatoreId === undefined) return null
+      return {
+        ...base,
+        ...origine,
+        tipo: 'tiro',
+        giocatoreId,
+        zona: e.zona,
+        esito: e.esito,
+      }
+    }
+    case 'corner':
+      return { ...base, tipo: 'corner', schemaId: schemaRimappato(e.schemaId) }
   }
 }
 

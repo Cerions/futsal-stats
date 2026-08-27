@@ -9,11 +9,35 @@ import {
   formatCronometro,
   minutoCorrente,
 } from '../utils/cronometro'
-import type { Evento, Giocatore, Partita as PartitaType } from '../db/schema'
+import type {
+  Evento,
+  EsitoTiro,
+  Giocatore,
+  OrigineTiro,
+  Partita as PartitaType,
+  SchemaCorner,
+  ZonaTiro,
+} from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
 import { nomeCompleto, nomeCorto } from '../utils/giocatore'
 import TagBadge from '../components/TagBadge'
 import { descriviEvento } from '../utils/evento'
+import CampoTiri from '../components/CampoTiri'
+import { conteggiPerZona, contaCorner } from '../utils/statistiche'
+import {
+  ESITI_TIRO,
+  ORIGINI_TIRO,
+  formatXG,
+  origineLabel,
+  origineRichiedeBattuta,
+  origineRichiedeSchema,
+  pesoZona,
+  xgTotale,
+  zonaLabel,
+} from '../db/zone'
+
+/** Passi del flusso di registrazione di una conclusione. */
+type PassoTiro = 'giocatore' | 'origine' | 'battuta' | 'schema' | 'zona' | 'esito' | 'assist'
 
 export default function Partita() {
   const { id } = useParams()
@@ -39,6 +63,13 @@ export default function Partita() {
     () => db.eventi.where('partitaId').equals(partitaId).sortBy('id'),
     [partitaId]
   )
+  const schemi = useLiveQuery(
+    () =>
+      partita
+        ? db.schemi.where('stagioneId').equals(partita.stagioneId).toArray()
+        : [],
+    [partita?.stagioneId]
+  )
 
   if (!partita || !stagione || !avversario || !rosa) {
     return <div className="p-6">Caricamento...</div>
@@ -61,6 +92,7 @@ export default function Partita() {
       partita={partita}
       rosa={rosa}
       eventi={eventi ?? []}
+      schemi={schemi ?? []}
       avversarioNome={avversario.nome}
       squadraNome={nomeSquadra(stagione)}
       stagioneId={stagione.id!}
@@ -266,6 +298,7 @@ function Live({
   partita,
   rosa,
   eventi,
+  schemi,
   avversarioNome,
   squadraNome,
   stagioneId,
@@ -273,6 +306,7 @@ function Live({
   partita: PartitaType
   rosa: Giocatore[]
   eventi: Evento[]
+  schemi: SchemaCorner[]
   avversarioNome: string
   squadraNome: string
   stagioneId: number
@@ -314,8 +348,6 @@ function Live({
   ).length
 
   // ----- STATE: modali -----
-  const [showGol, setShowGol] = useState(false)
-  const [marcatoreId, setMarcatoreId] = useState<number | null>(null)
   const [showGolSubito, setShowGolSubito] = useState(false)
   const [showAutogolContro, setShowAutogolContro] = useState(false)
   const [showCambio, setShowCambio] = useState(false)
@@ -323,31 +355,38 @@ function Live({
   const [showFineTempo, setShowFineTempo] = useState(false)
   const [showFinePartita, setShowFinePartita] = useState(false)
 
+  // ----- STATE: registrazione conclusione -----
+  // Un solo flusso per tiri e gol:
+  // giocatore → origine → [battuta | schema] → zona → esito → [assist]
+  const [showTiro, setShowTiro] = useState(false)
+  const [passo, setPasso] = useState<PassoTiro>('giocatore')
+  const [tiroGiocatoreId, setTiroGiocatoreId] = useState<number | null>(null)
+  const [tiroOrigine, setTiroOrigine] = useState<OrigineTiro>('azione')
+  const [tiroBattuta, setTiroBattuta] = useState<ZonaTiro | null>(null)
+  const [tiroSchemaId, setTiroSchemaId] = useState<number | null>(null)
+  const [tiroZona, setTiroZona] = useState<ZonaTiro | null>(null)
+  // true quando il flusso arriva dal bottone Corner: origine e schema già decisi
+  const [origineFissata, setOrigineFissata] = useState(false)
+
+  // ----- STATE: corner -----
+  const [showCorner, setShowCorner] = useState(false)
+  const [passoCorner, setPassoCorner] = useState<'schema' | 'esito'>('schema')
+  const [cornerSchemaId, setCornerSchemaId] = useState<number | null>(null)
+
+  const [showMappa, setShowMappa] = useState(false)
+
+  // ----- Tiri e xG della partita -----
+  const conteggiZone = conteggiPerZona(eventi)
+  const xgPartita = xgTotale(eventi)
+  const tiriTotali = eventi.filter(
+    (e) => e.tipo === 'tiro' || e.tipo === 'gol_fatto'
+  ).length
+  const tiriConZona = eventi.filter(
+    (e) => e.tipo === 'tiro' || (e.tipo === 'gol_fatto' && e.zona !== undefined)
+  ).length
+  const cornerBattuti = contaCorner(eventi)
+
   // ----- AZIONI -----
-
-  // STEP 1 del gol: scegli marcatore → passa allo step 2 (assist)
-  function scegliMarcatore(giocatoreId: number) {
-    setMarcatoreId(giocatoreId)
-  }
-
-  // STEP 2 del gol: registra con o senza assist
-  async function confermaGol(assistId: number | null) {
-    if (marcatoreId === null) return
-    await db.eventi.add({
-      partitaId: partita.id!,
-      minuto,
-      tempoGioco,
-      tipo: 'gol_fatto',
-      giocatoreId: marcatoreId,
-      assistId: assistId ?? undefined,
-    })
-    setMarcatoreId(null)
-    setShowGol(false)
-  }
-
-  function annullaMarcatore() {
-    setMarcatoreId(null)
-  }
 
   // Gol subito: scelta tra "gol normale" e "autogol di un nostro"
   async function segnaGolSubitoNormale() {
@@ -384,6 +423,171 @@ function Live({
       tempoGioco,
       tipo: 'autogol_pro',
     })
+  }
+
+  // ----- CONCLUSIONE: flusso unico per tiri e gol -----
+
+  function apriTiro(preset?: { origine: OrigineTiro; schemaId: number | null }) {
+    setTiroGiocatoreId(null)
+    setTiroZona(null)
+    setTiroBattuta(null)
+    setTiroOrigine(preset?.origine ?? 'azione')
+    setTiroSchemaId(preset?.schemaId ?? null)
+    setOrigineFissata(preset !== undefined)
+    setPasso('giocatore')
+    setShowTiro(true)
+  }
+
+  function chiudiTiro() {
+    setShowTiro(false)
+    setTiroGiocatoreId(null)
+    setTiroZona(null)
+    setTiroBattuta(null)
+    setTiroSchemaId(null)
+    setTiroOrigine('azione')
+    setOrigineFissata(false)
+    setPasso('giocatore')
+  }
+
+  function scegliTiratore(giocatoreId: number) {
+    setTiroGiocatoreId(giocatoreId)
+    // Se il flusso arriva dal corner, origine e schema sono già decisi
+    setPasso(origineFissata ? 'zona' : 'origine')
+  }
+
+  function scegliOrigine(o: OrigineTiro) {
+    setTiroOrigine(o)
+    setTiroBattuta(null)
+    setTiroSchemaId(null)
+    if (origineRichiedeBattuta(o)) setPasso('battuta')
+    else if (origineRichiedeSchema(o)) setPasso('schema')
+    else setPasso('zona')
+  }
+
+  function scegliBattuta(z: ZonaTiro) {
+    setTiroBattuta(z)
+    setPasso(origineRichiedeSchema(tiroOrigine) ? 'schema' : 'zona')
+  }
+
+  function scegliSchema(schemaId: number | null) {
+    setTiroSchemaId(schemaId)
+    setPasso('zona')
+  }
+
+  function scegliZonaTiro(z: ZonaTiro) {
+    setTiroZona(z)
+    setPasso('esito')
+  }
+
+  /** Torna al passo precedente, saltando quelli che questa origine non usa. */
+  function indietro() {
+    switch (passo) {
+      case 'origine':
+        setPasso('giocatore')
+        break
+      case 'battuta':
+        setPasso('origine')
+        break
+      case 'schema':
+        setPasso(origineRichiedeBattuta(tiroOrigine) ? 'battuta' : 'origine')
+        break
+      case 'zona':
+        if (origineRichiedeSchema(tiroOrigine) && !origineFissata) setPasso('schema')
+        else if (origineRichiedeBattuta(tiroOrigine)) setPasso('battuta')
+        else setPasso(origineFissata ? 'giocatore' : 'origine')
+        break
+      case 'esito':
+        setPasso('zona')
+        break
+      case 'assist':
+        setPasso('esito')
+        break
+      default:
+        break
+    }
+  }
+
+  /** I campi che descrivono come è nata la conclusione, comuni a tiro e gol. */
+  function datiOrigine() {
+    return {
+      origine: tiroOrigine,
+      zonaBattuta: tiroBattuta ?? undefined,
+      schemaId: tiroSchemaId ?? undefined,
+    }
+  }
+
+  async function registraTiroNonGol(esito: EsitoTiro) {
+    if (tiroGiocatoreId === null || tiroZona === null) return
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tempoGioco,
+      ...datiOrigine(),
+      tipo: 'tiro',
+      giocatoreId: tiroGiocatoreId,
+      zona: tiroZona,
+      esito,
+    })
+    chiudiTiro()
+  }
+
+  async function registraTiroGol(assistId: number | null) {
+    if (tiroGiocatoreId === null) return
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tempoGioco,
+      ...datiOrigine(),
+      tipo: 'gol_fatto',
+      giocatoreId: tiroGiocatoreId,
+      assistId: assistId ?? undefined,
+      zona: tiroZona ?? undefined,
+    })
+    chiudiTiro()
+  }
+
+  const tiratore = rosa.find((g) => g.id === tiroGiocatoreId)
+
+  const TITOLI_PASSO: Record<PassoTiro, string> = {
+    giocatore: 'Chi ha tirato?',
+    origine: 'Come nasce?',
+    battuta: 'Da dove è stata battuta?',
+    schema: 'Che schema?',
+    zona: 'Da dove ha tirato?',
+    esito: "Com'è finita?",
+    assist: 'Assist?',
+  }
+  const titoloPassoTiro = TITOLI_PASSO[passo]
+
+  // ----- CORNER -----
+
+  function apriCorner() {
+    setCornerSchemaId(null)
+    setPassoCorner(schemi.length > 0 ? 'schema' : 'esito')
+    setShowCorner(true)
+  }
+
+  function chiudiCorner() {
+    setShowCorner(false)
+    setCornerSchemaId(null)
+    setPassoCorner('schema')
+  }
+
+  /**
+   * Salva il corner battuto. Se ha prodotto una conclusione, prosegue nel
+   * flusso del tiro con origine e schema già impostati.
+   */
+  async function salvaCorner(conTiro: boolean) {
+    const schemaId = cornerSchemaId
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tempoGioco,
+      tipo: 'corner',
+      schemaId: schemaId ?? undefined,
+    })
+    chiudiCorner()
+    if (conTiro) apriTiro({ origine: 'corner', schemaId })
   }
 
   async function eseguiCambio(entraId: number) {
@@ -538,6 +742,39 @@ function Live({
             <div className="text-4xl font-bold">{golSubiti}</div>
           </div>
         </div>
+
+        {/* Riga xG */}
+        {(tiriTotali > 0 || cornerBattuti > 0) && (
+          <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3 flex-wrap text-xs text-slate-400">
+            <span>
+              Tiri <span className="font-semibold text-slate-200">{tiriTotali}</span>
+            </span>
+            <span className="text-slate-600">•</span>
+            <span>
+              xG{' '}
+              <span className="font-semibold text-emerald-400 tabular-nums">
+                {formatXG(xgPartita)}
+              </span>
+            </span>
+            {cornerBattuti > 0 && (
+              <>
+                <span className="text-slate-600">•</span>
+                <span>
+                  Corner{' '}
+                  <span className="font-semibold text-slate-200">{cornerBattuti}</span>
+                </span>
+              </>
+            )}
+            {tiriConZona < tiriTotali && (
+              <>
+                <span className="text-slate-600">•</span>
+                <span className="text-amber-400/80">
+                  {tiriTotali - tiriConZona} senza zona
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {!finita && (
@@ -564,13 +801,13 @@ function Live({
             </button>
           </div>
 
-          {/* Bottoni gol */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          {/* Conclusioni */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <button
-              onClick={() => setShowGol(true)}
+              onClick={() => apriTiro()}
               className="bg-emerald-600 hover:bg-emerald-500 py-4 rounded-lg font-bold text-lg"
             >
-              ⚽ Gol nostro
+              🎯 Tiro / Gol
             </button>
             <button
               onClick={() => setShowGolSubito(true)}
@@ -579,6 +816,13 @@ function Live({
               ⚽ Gol subito
             </button>
           </div>
+
+          <button
+            onClick={apriCorner}
+            className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold mb-4"
+          >
+            🚩 Corner
+          </button>
 
           {/* Banner intervallo */}
           {partita.cronometro.inPausa &&
@@ -675,6 +919,29 @@ function Live({
         </div>
       )}
 
+      {/* Mappa tiri */}
+      {tiriConZona > 0 && (
+        <section className="mt-6">
+          <button
+            onClick={() => setShowMappa((v) => !v)}
+            className="w-full flex items-center justify-between text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2"
+          >
+            <span>Mappa tiri ({tiriConZona})</span>
+            <span className="text-slate-500">{showMappa ? '▲' : '▼'}</span>
+          </button>
+          {showMappa && (
+            <>
+              <CampoTiri modalita="mappa" conteggi={conteggiZone} />
+              <p className="text-xs text-slate-500 mt-2">
+                In ogni zona: <strong className="text-slate-400">gol/tiri</strong>.
+                Più la zona è verde, più si è tirato da lì. xG partita:{' '}
+                <strong className="text-emerald-400">{formatXG(xgPartita)}</strong>
+              </p>
+            </>
+          )}
+        </section>
+      )}
+
       {/* Eventi log */}
       {eventi.length > 0 && (
         <section className="mt-6">
@@ -687,33 +954,22 @@ function Live({
                 <span className="text-slate-500 font-mono mr-2">
                   T{e.tempoGioco} • {e.minuto}'
                 </span>
-                {descriviEvento(e, rosa)}
+                {descriviEvento(e, rosa, schemi)}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* ----- MODAL: gol nostro (2 step: marcatore → assist) ----- */}
-      <Modal
-        open={showGol}
-        onClose={() => {
-          setShowGol(false)
-          setMarcatoreId(null)
-        }}
-        title={
-          marcatoreId === null
-            ? 'Chi ha segnato?'
-            : `Assist? (${nomeCorto(rosa.find((g) => g.id === marcatoreId)!)} ha segnato)`
-        }
-      >
-        {marcatoreId === null ? (
+      {/* ----- MODAL: conclusione (giocatore → origine → [battuta|schema] → zona → esito → assist) ----- */}
+      <Modal open={showTiro} onClose={chiudiTiro} title={titoloPassoTiro}>
+        {passo === 'giocatore' && (
           <>
-            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+            <ul className="flex flex-col gap-2 max-h-80 overflow-y-auto">
               {inCampo.map((g) => (
                 <li key={g.id}>
                   <button
-                    onClick={() => scegliMarcatore(g.id!)}
+                    onClick={() => scegliTiratore(g.id!)}
                     className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg flex items-center gap-3"
                   >
                     {g.numero !== undefined && (
@@ -729,7 +985,7 @@ function Live({
             <div className="border-t border-slate-700 mt-3 pt-3">
               <button
                 onClick={() => {
-                  setShowGol(false)
+                  chiudiTiro()
                   segnaAutogolPro()
                 }}
                 className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
@@ -738,15 +994,184 @@ function Live({
               </button>
             </div>
           </>
-        ) : (
+        )}
+
+        {passo === 'origine' && (
           <>
-            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+            <div className="flex flex-col gap-2">
+              {ORIGINI_TIRO.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => scegliOrigine(o.value)}
+                  className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left flex items-center gap-3"
+                >
+                  <span className="text-xl">{o.icona}</span>
+                  <span className="font-semibold">{o.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={indietro}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Cambia giocatore
+              </button>
+            </div>
+          </>
+        )}
+
+        {passo === 'battuta' && (
+          <>
+            <p className="text-xs text-slate-400 mb-2">
+              Tocca il punto da cui è stata battuta. La porta avversaria è in alto.
+            </p>
+            <CampoTiri
+              modalita="seleziona"
+              mostraDaFermo={false}
+              onSelect={scegliBattuta}
+            />
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={indietro}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+            </div>
+          </>
+        )}
+
+        {passo === 'schema' && (
+          <>
+            {schemi.length === 0 ? (
+              <p className="text-slate-400 text-sm mb-3">
+                Nessuno schema definito. Puoi aggiungerli dal setup della stagione.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
+                {schemi.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => scegliSchema(s.id!)}
+                      className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+                    >
+                      <div className="font-semibold">{s.nome}</div>
+                      {s.note && (
+                        <div className="text-xs text-slate-400 truncate">{s.note}</div>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="border-t border-slate-700 pt-3 flex gap-2">
+              <button
+                onClick={indietro}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+              <button
+                onClick={() => scegliSchema(null)}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                Nessuno schema
+              </button>
+            </div>
+          </>
+        )}
+
+        {passo === 'zona' && (
+          <>
+            <p className="text-xs text-slate-400 mb-2">
+              Tocca la zona da cui è partita la conclusione. La porta è in alto.
+            </p>
+            <CampoTiri modalita="seleziona" onSelect={scegliZonaTiro} />
+            <div className="border-t border-slate-700 mt-3 pt-3 flex gap-2">
+              <button
+                onClick={indietro}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+              <button
+                onClick={() => {
+                  setTiroZona(null)
+                  setPasso('esito')
+                }}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                title="Registra senza zona: non conterà nell'xG"
+              >
+                Non lo so
+              </button>
+            </div>
+          </>
+        )}
+
+        {passo === 'esito' && (
+          <>
+            <p className="text-sm text-slate-400 mb-3">
+              {tiratore ? nomeCorto(tiratore) : '???'}
+              {tiroZona !== null ? (
+                <>
+                  {' '}da <strong className="text-slate-200">{zonaLabel(tiroZona)}</strong>{' '}
+                  <span className="text-emerald-400">
+                    (xG {pesoZona(tiroZona).toFixed(2)})
+                  </span>
+                </>
+              ) : (
+                <span className="text-amber-400/80"> — zona non registrata</span>
+              )}
+              {tiroOrigine !== 'azione' && (
+                <span className="block text-xs mt-0.5">
+                  {origineLabel(tiroOrigine)}
+                  {tiroSchemaId !== null &&
+                    ` — ${schemi.find((s) => s.id === tiroSchemaId)?.nome ?? 'schema'}`}
+                  {tiroBattuta !== null && ` — battuta da ${zonaLabel(tiroBattuta)}`}
+                </span>
+              )}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setPasso('assist')}
+                className="bg-emerald-600 hover:bg-emerald-500 px-4 py-3 rounded-lg font-bold"
+              >
+                ⚽ Gol
+              </button>
+              {ESITI_TIRO.map((es) => (
+                <button
+                  key={es.value}
+                  onClick={() => registraTiroNonGol(es.value)}
+                  className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
+                >
+                  {es.label}
+                  {es.inPorta && (
+                    <span className="text-xs text-slate-400 ml-2">(in porta)</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={indietro}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Cambia zona
+              </button>
+            </div>
+          </>
+        )}
+
+        {passo === 'assist' && (
+          <>
+            <ul className="flex flex-col gap-2 max-h-64 overflow-y-auto">
               {inCampo
-                .filter((g) => g.id !== marcatoreId)
+                .filter((g) => g.id !== tiroGiocatoreId)
                 .map((g) => (
                   <li key={g.id}>
                     <button
-                      onClick={() => confermaGol(g.id!)}
+                      onClick={() => registraTiroGol(g.id!)}
                       className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg flex items-center gap-3"
                     >
                       {g.numero !== undefined && (
@@ -761,18 +1186,92 @@ function Live({
             </ul>
             <div className="border-t border-slate-700 mt-3 pt-3 flex gap-2">
               <button
-                onClick={annullaMarcatore}
+                onClick={indietro}
                 className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
                 ← Indietro
               </button>
               <button
-                onClick={() => confermaGol(null)}
+                onClick={() => registraTiroGol(null)}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-lg text-sm font-semibold"
               >
                 Nessun assist
               </button>
             </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ----- MODAL: corner ----- */}
+      <Modal
+        open={showCorner}
+        onClose={chiudiCorner}
+        title={passoCorner === 'schema' ? 'Che schema?' : 'Corner battuto'}
+      >
+        {passoCorner === 'schema' ? (
+          <>
+            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
+              {schemi.map((s) => (
+                <li key={s.id}>
+                  <button
+                    onClick={() => {
+                      setCornerSchemaId(s.id!)
+                      setPassoCorner('esito')
+                    }}
+                    className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+                  >
+                    <div className="font-semibold">{s.nome}</div>
+                    {s.note && (
+                      <div className="text-xs text-slate-400 truncate">{s.note}</div>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-slate-700 pt-3">
+              <button
+                onClick={() => {
+                  setCornerSchemaId(null)
+                  setPassoCorner('esito')
+                }}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                Nessuno schema
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-400 mb-3">
+              {cornerSchemaId !== null
+                ? schemi.find((s) => s.id === cornerSchemaId)?.nome ?? 'Schema'
+                : 'Senza schema'}
+              . Ha prodotto una conclusione?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => salvaCorner(true)}
+                className="bg-emerald-600 hover:bg-emerald-500 px-4 py-3 rounded-lg font-bold"
+              >
+                Sì, registra il tiro
+              </button>
+              <button
+                onClick={() => salvaCorner(false)}
+                className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+              >
+                No, solo il corner
+              </button>
+            </div>
+            {schemi.length > 0 && (
+              <div className="border-t border-slate-700 mt-3 pt-3">
+                <button
+                  onClick={() => setPassoCorner('schema')}
+                  className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                >
+                  ← Cambia schema
+                </button>
+              </div>
+            )}
           </>
         )}
       </Modal>

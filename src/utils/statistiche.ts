@@ -1,4 +1,13 @@
-import type { Evento, Giocatore, Partita } from '../db/schema'
+import type {
+  Evento,
+  Giocatore,
+  OrigineTiro,
+  Partita,
+  SchemaCorner,
+  ZonaTiro,
+} from '../db/schema'
+import { esitoInPorta, origineDi, ORIGINI_TIRO, pesoZona } from '../db/zone'
+import type { ConteggioZona } from '../components/CampoTiri'
 
 export interface StatsGiocatore {
   giocatore: Giocatore
@@ -10,6 +19,10 @@ export interface StatsGiocatore {
   autogol: number
   golPro: number         // gol della squadra mentre era in campo
   golContro: number      // gol subiti mentre era in campo
+  tiri: number           // tiri totali (un gol è un tiro riuscito)
+  tiriInPorta: number    // gol + tiri parati
+  xG: number             // somma dei pesi delle zone dei tiri con zona nota
+  golSenzaZona: number   // gol senza zona: non contribuiscono all'xG
 }
 
 /**
@@ -37,7 +50,7 @@ function intervalliInCampoPerGiocatore(
   // assumiamo che chi era in campo alla fine del tempo precedente sia in campo all'inizio del successivo.
   // Questa è l'assunzione naturale nel calcio a 5 (nessun cambio all'intervallo se non esplicito).
 
-  let inCampoAttuale = new Set<number>(partita.titolari)
+  const inCampoAttuale = new Set<number>(partita.titolari)
   const intervalliAperti = new Map<number, { tempoGioco: number; minutoInizio: number }>()
 
   // Inizializza intervalli aperti per titolari a T1 min 0
@@ -153,6 +166,10 @@ export function calcolaStatistiche(
       autogol: 0,
       golPro: 0,
       golContro: 0,
+      tiri: 0,
+      tiriInPorta: 0,
+      xG: 0,
+      golSenzaZona: 0,
     })
   }
 
@@ -183,7 +200,17 @@ export function calcolaStatistiche(
       switch (e.tipo) {
         case 'gol_fatto': {
           const marc = stats.get(e.giocatoreId)
-          if (marc) marc.gol += 1
+          if (marc) {
+            marc.gol += 1
+            // Un gol è un tiro riuscito, e per definizione è in porta.
+            marc.tiri += 1
+            marc.tiriInPorta += 1
+            if (e.zona !== undefined) {
+              marc.xG += pesoZona(e.zona)
+            } else {
+              marc.golSenzaZona += 1
+            }
+          }
           if (e.assistId !== undefined) {
             const ass = stats.get(e.assistId)
             if (ass) ass.assist += 1
@@ -251,9 +278,137 @@ export function calcolaStatistiche(
           }
           break
         }
+        case 'tiro': {
+          const t = stats.get(e.giocatoreId)
+          if (t) {
+            t.tiri += 1
+            if (esitoInPorta(e.esito)) t.tiriInPorta += 1
+            t.xG += pesoZona(e.zona)
+          }
+          break
+        }
       }
     }
   }
 
   return Array.from(stats.values())
+}
+
+/**
+ * Conta tiri e gol per ogni zona, per disegnare la mappa dei tiri.
+ * Considera sia i tiri espliciti sia i gol a cui è stata associata una zona.
+ */
+export function conteggiPerZona(eventi: Evento[]): Map<ZonaTiro, ConteggioZona> {
+  const mappa = new Map<ZonaTiro, ConteggioZona>()
+  const get = (z: ZonaTiro) => {
+    let c = mappa.get(z)
+    if (!c) {
+      c = { tiri: 0, gol: 0 }
+      mappa.set(z, c)
+    }
+    return c
+  }
+
+  for (const e of eventi) {
+    if (e.tipo === 'tiro') {
+      get(e.zona).tiri += 1
+    } else if (e.tipo === 'gol_fatto' && e.zona !== undefined) {
+      const c = get(e.zona)
+      c.tiri += 1
+      c.gol += 1
+    }
+  }
+  return mappa
+}
+
+// ===========================================================================
+// PALLE INATTIVE
+// ===========================================================================
+
+export interface StatsOrigine {
+  origine: OrigineTiro
+  tiri: number
+  gol: number
+  xG: number
+}
+
+/**
+ * Resa delle conclusioni divise per come sono nate.
+ * Gli eventi senza il campo origine contano come azione di gioco aperto.
+ */
+export function statistichePerOrigine(eventi: Evento[]): StatsOrigine[] {
+  const mappa = new Map<OrigineTiro, StatsOrigine>(
+    ORIGINI_TIRO.map((o) => [o.value, { origine: o.value, tiri: 0, gol: 0, xG: 0 }])
+  )
+
+  for (const e of eventi) {
+    if (e.tipo !== 'tiro' && e.tipo !== 'gol_fatto') continue
+    const s = mappa.get(origineDi(e))
+    if (!s) continue
+    s.tiri += 1
+    if (e.tipo === 'gol_fatto') s.gol += 1
+    if (e.zona !== undefined) s.xG += pesoZona(e.zona)
+  }
+
+  return Array.from(mappa.values())
+}
+
+export interface StatsSchema {
+  /** null = corner battuti senza schema associato */
+  schema: SchemaCorner | null
+  cornerBattuti: number
+  tiri: number
+  gol: number
+  xG: number
+}
+
+/**
+ * Resa degli schemi di calcio d'angolo: quanti corner sono stati battuti con
+ * ognuno, quanti tiri hanno prodotto e quanti gol.
+ *
+ * I corner e i tiri sono eventi separati, collegati dallo schema: un tiro
+ * conta per uno schema se ha origine 'corner' e quello schemaId.
+ */
+export function statistichePerSchema(
+  eventi: Evento[],
+  schemi: SchemaCorner[]
+): StatsSchema[] {
+  const vuota = (schema: SchemaCorner | null): StatsSchema => ({
+    schema,
+    cornerBattuti: 0,
+    tiri: 0,
+    gol: 0,
+    xG: 0,
+  })
+
+  // Chiave: id dello schema, oppure 0 per "senza schema"
+  const mappa = new Map<number, StatsSchema>()
+  mappa.set(0, vuota(null))
+  for (const s of schemi) mappa.set(s.id!, vuota(s))
+
+  const riga = (schemaId?: number) => mappa.get(schemaId ?? 0) ?? mappa.get(0)!
+
+  for (const e of eventi) {
+    if (e.tipo === 'corner') {
+      riga(e.schemaId).cornerBattuti += 1
+    } else if (
+      (e.tipo === 'tiro' || e.tipo === 'gol_fatto') &&
+      origineDi(e) === 'corner'
+    ) {
+      const r = riga(e.schemaId)
+      r.tiri += 1
+      if (e.tipo === 'gol_fatto') r.gol += 1
+      if (e.zona !== undefined) r.xG += pesoZona(e.zona)
+    }
+  }
+
+  // La riga "senza schema" ha senso solo se ha davvero qualcosa dentro
+  return Array.from(mappa.values()).filter(
+    (r) => r.schema !== null || r.cornerBattuti > 0 || r.tiri > 0
+  )
+}
+
+/** Numero di corner battuti in una lista di eventi. */
+export function contaCorner(eventi: Evento[]): number {
+  return eventi.filter((e) => e.tipo === 'corner').length
 }

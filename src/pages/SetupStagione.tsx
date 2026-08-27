@@ -5,8 +5,9 @@ import { db } from '../db/database'
 import { RUOLI, ruoloLabel, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
-import type { Ruolo, Giocatore, SquadraAvversaria } from '../db/schema'
+import type { Ruolo, Giocatore, SquadraAvversaria, SchemaCorner } from '../db/schema'
 import { nomeCompleto } from '../utils/giocatore'
+import { eliminaSchemaCorner } from '../db/cascade'
 
 export default function SetupStagione() {
   const { id } = useParams()
@@ -20,6 +21,10 @@ export default function SetupStagione() {
   )
   const avversari = useLiveQuery(
     () => db.avversari.where('stagioneId').equals(stagioneId).toArray(),
+    [stagioneId]
+  )
+  const schemi = useLiveQuery(
+    () => db.schemi.where('stagioneId').equals(stagioneId).toArray(),
     [stagioneId]
   )
 
@@ -110,6 +115,48 @@ export default function SetupStagione() {
   async function eliminaAvversario(avvId: number) {
     if (!confirm('Eliminare questa squadra avversaria?')) return
     await db.avversari.delete(avvId)
+  }
+
+  // ----- MODAL SCHEMA CALCIO D'ANGOLO -----
+  const [showSchema, setShowSchema] = useState(false)
+  const [schemaInModifica, setSchemaInModifica] = useState<SchemaCorner | null>(null)
+  const [formSchemaNome, setFormSchemaNome] = useState('')
+  const [formSchemaNote, setFormSchemaNote] = useState('')
+
+  function apriNuovoSchema() {
+    setSchemaInModifica(null)
+    setFormSchemaNome('')
+    setFormSchemaNote('')
+    setShowSchema(true)
+  }
+
+  function apriModificaSchema(s: SchemaCorner) {
+    setSchemaInModifica(s)
+    setFormSchemaNome(s.nome)
+    setFormSchemaNote(s.note ?? '')
+    setShowSchema(true)
+  }
+
+  async function salvaSchema() {
+    const nome = formSchemaNome.trim()
+    if (!nome) return
+    const note = formSchemaNote.trim() || undefined
+    if (schemaInModifica) {
+      await db.schemi.update(schemaInModifica.id!, { nome, note })
+    } else {
+      await db.schemi.add({ stagioneId, nome, note })
+    }
+    setShowSchema(false)
+  }
+
+  async function eliminaSchema(schemaId: number) {
+    if (
+      !confirm(
+        'Eliminare questo schema? I corner e i tiri già registrati restano, ma perdono il riferimento allo schema.'
+      )
+    )
+      return
+    await eliminaSchemaCorner(schemaId)
   }
 
   if (stagione === undefined) {
@@ -248,6 +295,63 @@ export default function SetupStagione() {
         )}
       </section>
 
+      {/* Sezione Schemi calcio d'angolo */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold">
+            Schemi calcio d'angolo{' '}
+            <span className="text-slate-400 text-sm">({schemi?.length ?? 0})</span>
+          </h2>
+          <button
+            onClick={apriNuovoSchema}
+            className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
+          >
+            + Schema
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          Li scegli in partita quando batti un corner, e a fine stagione vedi
+          quale rende di più.
+        </p>
+
+        {schemi && schemi.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {schemi.map((s) => (
+              <li
+                key={s.id}
+                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
+              >
+                <span className="text-lg">🚩</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium">{s.nome}</div>
+                  {s.note && (
+                    <div className="text-xs text-slate-400 truncate">{s.note}</div>
+                  )}
+                </div>
+                <button
+                  onClick={() => apriModificaSchema(s)}
+                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                  title="Modifica"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => eliminaSchema(s.id!)}
+                  className="text-slate-400 hover:text-red-400 text-sm px-2"
+                  title="Elimina"
+                >
+                  🗑️
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-slate-500 text-sm italic">
+            Nessuno schema. Senza schemi puoi comunque registrare i corner.
+          </p>
+        )}
+      </section>
+
       {/* Modal giocatore (nuovo o modifica) */}
       <Modal
         open={showGiocatore}
@@ -352,6 +456,55 @@ export default function SetupStagione() {
           >
             {avversarioInModifica ? 'Salva' : 'Aggiungi'}
           </button>
+        </div>
+      </Modal>
+
+      {/* Modal schema corner (nuovo o modifica) */}
+      <Modal
+        open={showSchema}
+        onClose={() => setShowSchema(false)}
+        title={schemaInModifica ? 'Modifica schema' : "Nuovo schema d'angolo"}
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Nome</label>
+            <input
+              type="text"
+              value={formSchemaNome}
+              onChange={(e) => setFormSchemaNome(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && salvaSchema()}
+              placeholder="Es. Corto sul primo palo"
+              autoFocus
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Note (opzionale)
+            </label>
+            <textarea
+              value={formSchemaNote}
+              onChange={(e) => setFormSchemaNote(e.target.value)}
+              rows={3}
+              placeholder="Come si sviluppa, chi si muove dove..."
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 resize-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              onClick={() => setShowSchema(false)}
+              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+            >
+              Annulla
+            </button>
+            <button
+              onClick={salvaSchema}
+              disabled={!formSchemaNome.trim()}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {schemaInModifica ? 'Salva' : 'Aggiungi'}
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

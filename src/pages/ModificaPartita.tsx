@@ -8,13 +8,96 @@ import { nomeCorto } from '../utils/giocatore'
 import { ordineRuolo } from '../db/ruoli'
 import TagSelector from '../components/TagSelector'
 import Modal from '../components/Modal'
-import type { Evento, TagPartita } from '../db/schema'
+import type {
+  EsitoTiro,
+  Evento,
+  OrigineTiro,
+  SchemaCorner,
+  TagPartita,
+  ZonaTiro,
+} from '../db/schema'
+import {
+  ESITI_TIRO,
+  ORIGINI_TIRO,
+  ZONE_TIRO,
+  origineRichiedeBattuta,
+  origineRichiedeSchema,
+} from '../db/zone'
 
 type TipoEventoNuovo =
   | 'gol_fatto'
   | 'gol_subito'
   | 'autogol_pro'
   | 'autogol_contro'
+  | 'tiro'
+  | 'corner'
+
+/** Eventi che si possono correggere a posteriori dalla lista. */
+function eventoModificabile(e: Evento): boolean {
+  return (
+    e.tipo === 'gol_fatto' ||
+    e.tipo === 'autogol_contro' ||
+    e.tipo === 'tiro' ||
+    e.tipo === 'corner'
+  )
+}
+
+/** Select riutilizzabile per la zona di tiro. */
+function SelectZona({
+  value,
+  onChange,
+  opzionale,
+  soloCampo = false,
+}: {
+  value: ZonaTiro | ''
+  onChange: (z: ZonaTiro | '') => void
+  opzionale: boolean
+  /** esclude rigore e tiro libero: non sono punti di battuta */
+  soloCampo?: boolean
+}) {
+  const zone = soloCampo ? ZONE_TIRO.filter((z) => !z.daFermo) : ZONE_TIRO
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value === '' ? '' : (e.target.value as ZonaTiro))}
+      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+    >
+      <option value="">{opzionale ? 'Non registrata (niente xG)' : 'Seleziona...'}</option>
+      {zone.map((z) => (
+        <option key={z.value} value={z.value}>
+          {z.label}
+          {soloCampo ? '' : ` — xG ${z.peso.toFixed(2)}`}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** Select riutilizzabile per lo schema di calcio d'angolo. */
+function SelectSchema({
+  value,
+  onChange,
+  schemi,
+}: {
+  value: number | ''
+  onChange: (id: number | '') => void
+  schemi: SchemaCorner[]
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+    >
+      <option value="">Nessuno schema</option>
+      {schemi.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.nome}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 export default function ModificaPartita() {
   const { id } = useParams()
@@ -44,6 +127,13 @@ export default function ModificaPartita() {
     () => db.eventi.where('partitaId').equals(partitaId).sortBy('id'),
     [partitaId]
   )
+  const schemi = useLiveQuery(
+    () =>
+      partita
+        ? db.schemi.where('stagioneId').equals(partita.stagioneId).toArray()
+        : [],
+    [partita?.stagioneId]
+  )
 
   // --- Modal: aggiungi evento ---
   const [showAggiungi, setShowAggiungi] = useState(false)
@@ -52,13 +142,23 @@ export default function ModificaPartita() {
   const [tempoGiocoNuovo, setTempoGiocoNuovo] = useState('1')
   const [marcatoreNuovo, setMarcatoreNuovo] = useState<number | ''>('')
   const [assistNuovo, setAssistNuovo] = useState<number | ''>('')
+  const [zonaNuova, setZonaNuova] = useState<ZonaTiro | ''>('')
+  const [esitoNuovo, setEsitoNuovo] = useState<EsitoTiro>('parato')
+  const [origineNuova, setOrigineNuova] = useState<OrigineTiro>('azione')
+  const [battutaNuova, setBattutaNuova] = useState<ZonaTiro | ''>('')
+  const [schemaNuovo, setSchemaNuovo] = useState<number | ''>('')
 
-  // --- Modal: modifica gol esistente ---
+  // --- Modal: modifica evento esistente ---
   const [eventoInModifica, setEventoInModifica] = useState<Evento | null>(null)
   const [editMarcatore, setEditMarcatore] = useState<number | ''>('')
   const [editAssist, setEditAssist] = useState<number | ''>('')
+  const [editZona, setEditZona] = useState<ZonaTiro | ''>('')
+  const [editEsito, setEditEsito] = useState<EsitoTiro>('parato')
+  const [editOrigine, setEditOrigine] = useState<OrigineTiro>('azione')
+  const [editBattuta, setEditBattuta] = useState<ZonaTiro | ''>('')
+  const [editSchema, setEditSchema] = useState<number | ''>('')
 
-  if (!partita || !stagione || !avversari || !rosa || !eventi) {
+  if (!partita || !stagione || !avversari || !rosa || !eventi || !schemi) {
     return <div className="p-6">Caricamento...</div>
   }
 
@@ -87,7 +187,7 @@ export default function ModificaPartita() {
 
   // ===== Elimina evento =====
   async function eliminaEvento(e: Evento) {
-    if (!confirm(`Eliminare l'evento "${descriviEvento(e, rosa!)}"?`)) return
+    if (!confirm(`Eliminare l'evento "${descriviEvento(e, rosa!, schemi!)}"?`)) return
     await db.eventi.delete(e.id!)
   }
 
@@ -98,7 +198,29 @@ export default function ModificaPartita() {
     setTempoGiocoNuovo(String(partita!.cronometro.tempoCorrente ?? 1))
     setMarcatoreNuovo('')
     setAssistNuovo('')
+    setZonaNuova('')
+    setEsitoNuovo('parato')
+    setOrigineNuova('azione')
+    setBattutaNuova('')
+    setSchemaNuovo('')
     setShowAggiungi(true)
+  }
+
+  /** Campi comuni a tiri e gol che descrivono come è nata la conclusione. */
+  function datiOrigineNuovi() {
+    return {
+      origine: origineNuova,
+      zonaBattuta: origineRichiedeBattuta(origineNuova)
+        ? battutaNuova === ''
+          ? undefined
+          : battutaNuova
+        : undefined,
+      schemaId: origineRichiedeSchema(origineNuova)
+        ? schemaNuovo === ''
+          ? undefined
+          : Number(schemaNuovo)
+        : undefined,
+    }
   }
 
   async function salvaNuovoEvento() {
@@ -113,12 +235,33 @@ export default function ModificaPartita() {
         if (marcatoreNuovo === '') return
         await db.eventi.add({
           ...base,
+          ...datiOrigineNuovi(),
           tipo: 'gol_fatto',
           giocatoreId: Number(marcatoreNuovo),
           assistId: assistNuovo === '' ? undefined : Number(assistNuovo),
+          zona: zonaNuova === '' ? undefined : zonaNuova,
         })
         break
       }
+      case 'tiro': {
+        if (marcatoreNuovo === '' || zonaNuova === '') return
+        await db.eventi.add({
+          ...base,
+          ...datiOrigineNuovi(),
+          tipo: 'tiro',
+          giocatoreId: Number(marcatoreNuovo),
+          zona: zonaNuova,
+          esito: esitoNuovo,
+        })
+        break
+      }
+      case 'corner':
+        await db.eventi.add({
+          ...base,
+          tipo: 'corner',
+          schemaId: schemaNuovo === '' ? undefined : Number(schemaNuovo),
+        })
+        break
       case 'gol_subito':
         await db.eventi.add({ ...base, tipo: 'gol_subito' })
         break
@@ -140,14 +283,39 @@ export default function ModificaPartita() {
 
   // ===== Modifica gol esistente =====
   function apriModificaEvento(e: Evento) {
-    if (e.tipo !== 'gol_fatto' && e.tipo !== 'autogol_contro') return
+    if (!eventoModificabile(e)) return
     setEventoInModifica(e)
-    if (e.tipo === 'gol_fatto') {
-      setEditMarcatore(e.giocatoreId)
-      setEditAssist(e.assistId ?? '')
-    } else {
-      setEditMarcatore(e.giocatoreId)
-      setEditAssist('')
+    setEditAssist('')
+    setEditZona('')
+    setEditEsito('parato')
+    setEditOrigine('azione')
+    setEditBattuta('')
+    setEditSchema('')
+    switch (e.tipo) {
+      case 'gol_fatto':
+        setEditMarcatore(e.giocatoreId)
+        setEditAssist(e.assistId ?? '')
+        setEditZona(e.zona ?? '')
+        setEditOrigine(e.origine ?? 'azione')
+        setEditBattuta(e.zonaBattuta ?? '')
+        setEditSchema(e.schemaId ?? '')
+        break
+      case 'autogol_contro':
+        setEditMarcatore(e.giocatoreId)
+        break
+      case 'tiro':
+        setEditMarcatore(e.giocatoreId)
+        setEditZona(e.zona)
+        setEditEsito(e.esito)
+        setEditOrigine(e.origine ?? 'azione')
+        setEditBattuta(e.zonaBattuta ?? '')
+        setEditSchema(e.schemaId ?? '')
+        break
+      case 'corner':
+        // il corner non ha giocatore: sblocchiamo il salvataggio
+        setEditMarcatore(0)
+        setEditSchema(e.schemaId ?? '')
+        break
     }
   }
 
@@ -155,14 +323,44 @@ export default function ModificaPartita() {
     if (!eventoInModifica) return
     if (editMarcatore === '') return
 
+    // Campi di origine, coerenti con l'origine scelta:
+    // battuta e schema si azzerano se l'origine non li prevede.
+    const datiOrigineEdit = {
+      origine: editOrigine,
+      zonaBattuta: origineRichiedeBattuta(editOrigine)
+        ? editBattuta === ''
+          ? undefined
+          : editBattuta
+        : undefined,
+      schemaId: origineRichiedeSchema(editOrigine)
+        ? editSchema === ''
+          ? undefined
+          : Number(editSchema)
+        : undefined,
+    }
+
     if (eventoInModifica.tipo === 'gol_fatto') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...datiOrigineEdit,
         giocatoreId: Number(editMarcatore),
         assistId: editAssist === '' ? undefined : Number(editAssist),
+        zona: editZona === '' ? undefined : editZona,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'autogol_contro') {
       await db.eventi.update(eventoInModifica.id!, {
         giocatoreId: Number(editMarcatore),
+      } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'tiro') {
+      if (editZona === '') return
+      await db.eventi.update(eventoInModifica.id!, {
+        ...datiOrigineEdit,
+        giocatoreId: Number(editMarcatore),
+        zona: editZona,
+        esito: editEsito,
+      } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'corner') {
+      await db.eventi.update(eventoInModifica.id!, {
+        schemaId: editSchema === '' ? undefined : Number(editSchema),
       } as Partial<Evento>)
     }
     setEventoInModifica(null)
@@ -171,14 +369,25 @@ export default function ModificaPartita() {
   // Etichetta tipo evento per il dropdown
   const TIPI_EVENTO: { value: TipoEventoNuovo; label: string }[] = [
     { value: 'gol_fatto', label: 'Gol nostro' },
+    { value: 'tiro', label: 'Tiro (non gol)' },
+    { value: 'corner', label: "Calcio d'angolo battuto" },
     { value: 'gol_subito', label: 'Gol subito' },
     { value: 'autogol_pro', label: 'Autogol avversario (gol per noi)' },
     { value: 'autogol_contro', label: 'Autogol nostro (gol per loro)' },
   ]
 
   const richiedeGiocatore =
-    tipoNuovo === 'gol_fatto' || tipoNuovo === 'autogol_contro'
+    tipoNuovo === 'gol_fatto' ||
+    tipoNuovo === 'autogol_contro' ||
+    tipoNuovo === 'tiro'
   const richiedeAssist = tipoNuovo === 'gol_fatto'
+  const mostraZona = tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro'
+  const zonaObbligatoria = tipoNuovo === 'tiro'
+  // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
+  const mostraOrigine = mostraZona
+  const mostraSchemaNuovo =
+    tipoNuovo === 'corner' || (mostraOrigine && origineRichiedeSchema(origineNuova))
+  const mostraBattutaNuova = mostraOrigine && origineRichiedeBattuta(origineNuova)
 
   // Per la data: input datetime-local vuole "YYYY-MM-DDTHH:mm"
   const dataInputValue = new Date(partita.dataOra - new Date().getTimezoneOffset() * 60000)
@@ -243,7 +452,7 @@ export default function ModificaPartita() {
         ) : (
           <ul className="flex flex-col gap-1 text-sm">
             {eventi.map((e) => {
-              const modificabile = e.tipo === 'gol_fatto' || e.tipo === 'autogol_contro'
+              const modificabile = eventoModificabile(e)
               return (
                 <li
                   key={e.id}
@@ -252,7 +461,7 @@ export default function ModificaPartita() {
                   <span className="text-slate-500 font-mono shrink-0">
                     T{e.tempoGioco} • {e.minuto}'
                   </span>
-                  <span className="flex-1">{descriviEvento(e, rosa)}</span>
+                  <span className="flex-1">{descriviEvento(e, rosa, schemi)}</span>
                   {modificabile && (
                     <button
                       onClick={() => apriModificaEvento(e)}
@@ -377,6 +586,85 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {mostraZona && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Zona di tiro {zonaObbligatoria ? '' : '(opzionale)'}
+              </label>
+              <SelectZona
+                value={zonaNuova}
+                onChange={setZonaNuova}
+                opzionale={!zonaObbligatoria}
+              />
+            </div>
+          )}
+
+          {mostraOrigine && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Come nasce
+              </label>
+              <select
+                value={origineNuova}
+                onChange={(e) => setOrigineNuova(e.target.value as OrigineTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {ORIGINI_TIRO.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.icona} {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {mostraBattutaNuova && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Battuta da (opzionale)
+              </label>
+              <SelectZona
+                value={battutaNuova}
+                onChange={setBattutaNuova}
+                opzionale
+                soloCampo
+              />
+            </div>
+          )}
+
+          {mostraSchemaNuovo && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Schema</label>
+              <SelectSchema
+                value={schemaNuovo}
+                onChange={setSchemaNuovo}
+                schemi={schemi}
+              />
+              {schemi.length === 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Nessuno schema definito nel setup della stagione.
+                </p>
+              )}
+            </div>
+          )}
+
+          {tipoNuovo === 'tiro' && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Esito</label>
+              <select
+                value={esitoNuovo}
+                onChange={(e) => setEsitoNuovo(e.target.value as EsitoTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {ESITI_TIRO.map((es) => (
+                  <option key={es.value} value={es.value}>
+                    {es.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 mt-2">
             <button
               onClick={() => setShowAggiungi(false)}
@@ -386,7 +674,10 @@ export default function ModificaPartita() {
             </button>
             <button
               onClick={salvaNuovoEvento}
-              disabled={richiedeGiocatore && marcatoreNuovo === ''}
+              disabled={
+                (richiedeGiocatore && marcatoreNuovo === '') ||
+                (zonaObbligatoria && zonaNuova === '')
+              }
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
               Aggiungi
@@ -402,27 +693,33 @@ export default function ModificaPartita() {
         title={
           eventoInModifica?.tipo === 'gol_fatto'
             ? 'Modifica gol'
+            : eventoInModifica?.tipo === 'tiro'
+            ? 'Modifica tiro'
+            : eventoInModifica?.tipo === 'corner'
+            ? 'Modifica corner'
             : 'Modifica autogol'
         }
       >
         <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Giocatore</label>
-            <select
-              value={editMarcatore}
-              onChange={(e) =>
-                setEditMarcatore(e.target.value === '' ? '' : Number(e.target.value))
-              }
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
-            >
-              <option value="">Seleziona...</option>
-              {rosaConvocati.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {nomeCorto(g)} {g.numero !== undefined ? `(${g.numero})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {eventoInModifica?.tipo !== 'corner' && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Giocatore</label>
+              <select
+                value={editMarcatore}
+                onChange={(e) =>
+                  setEditMarcatore(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                <option value="">Seleziona...</option>
+                {rosaConvocati.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {nomeCorto(g)} {g.numero !== undefined ? `(${g.numero})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {eventoInModifica?.tipo === 'gol_fatto' && (
             <div>
@@ -448,6 +745,88 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {(eventoInModifica?.tipo === 'gol_fatto' ||
+            eventoInModifica?.tipo === 'tiro') && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Zona di tiro{' '}
+                {eventoInModifica?.tipo === 'gol_fatto' ? '(opzionale)' : ''}
+              </label>
+              <SelectZona
+                value={editZona}
+                onChange={setEditZona}
+                opzionale={eventoInModifica?.tipo === 'gol_fatto'}
+              />
+            </div>
+          )}
+
+          {eventoInModifica?.tipo === 'tiro' && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Esito</label>
+              <select
+                value={editEsito}
+                onChange={(e) => setEditEsito(e.target.value as EsitoTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {ESITI_TIRO.map((es) => (
+                  <option key={es.value} value={es.value}>
+                    {es.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {(eventoInModifica?.tipo === 'gol_fatto' ||
+            eventoInModifica?.tipo === 'tiro') && (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">
+                  Come nasce
+                </label>
+                <select
+                  value={editOrigine}
+                  onChange={(e) => setEditOrigine(e.target.value as OrigineTiro)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+                >
+                  {ORIGINI_TIRO.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.icona} {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {origineRichiedeBattuta(editOrigine) && (
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">
+                    Battuta da (opzionale)
+                  </label>
+                  <SelectZona
+                    value={editBattuta}
+                    onChange={setEditBattuta}
+                    opzionale
+                    soloCampo
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {(eventoInModifica?.tipo === 'corner' ||
+            ((eventoInModifica?.tipo === 'gol_fatto' ||
+              eventoInModifica?.tipo === 'tiro') &&
+              origineRichiedeSchema(editOrigine))) && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Schema</label>
+              <SelectSchema
+                value={editSchema}
+                onChange={setEditSchema}
+                schemi={schemi}
+              />
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 mt-2">
             <button
               onClick={() => setEventoInModifica(null)}
@@ -457,7 +836,10 @@ export default function ModificaPartita() {
             </button>
             <button
               onClick={salvaModificaEvento}
-              disabled={editMarcatore === ''}
+              disabled={
+                editMarcatore === '' ||
+                (eventoInModifica?.tipo === 'tiro' && editZona === '')
+              }
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
               Salva
