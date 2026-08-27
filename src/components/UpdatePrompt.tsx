@@ -1,14 +1,25 @@
+// @ts-ignore - virtual module from vite-plugin-pwa
 import { useRegisterSW } from 'virtual:pwa-register/react'
+
+// Controlla aggiornamenti ogni 30 secondi quando l'app è aperta
+const INTERVALLO_CONTROLLO_MS = 30 * 1000
 
 export default function UpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegisteredSW(swUrl) {
+    onRegisteredSW(swUrl: string, registration: ServiceWorkerRegistration | undefined) {
       console.log('Service worker registrato:', swUrl)
+      if (!registration) return
+      // Forza il controllo periodico degli aggiornamenti
+      setInterval(() => {
+        registration.update().catch(() => {
+          // ignora errori di rete
+        })
+      }, INTERVALLO_CONTROLLO_MS)
     },
-    onRegisterError(error) {
+    onRegisterError(error: unknown) {
       console.error('Errore registrazione SW:', error)
     },
   })
