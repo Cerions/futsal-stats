@@ -2,7 +2,7 @@
 
 App PWA per registrare statistiche di partite di calcio a 5.
 
-**Live:** https://TUOSITO.netlify.app
+**Live:** https://futsalstatsrobur.netlify.app/
 
 ## Stack
 - React + TypeScript + Vite
