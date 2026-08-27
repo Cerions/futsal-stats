@@ -12,13 +12,15 @@ import type {
   EsitoTiro,
   Evento,
   OrigineTiro,
-  SchemaCorner,
+  Schema,
   TagPartita,
+  TipoInattiva,
   ZonaTiro,
 } from '../db/schema'
 import {
   ESITI_TIRO,
   ORIGINI_TIRO,
+  TIPI_INATTIVA,
   ZONE_TIRO,
   origineRichiedeBattuta,
   origineRichiedeSchema,
@@ -30,7 +32,7 @@ type TipoEventoNuovo =
   | 'autogol_pro'
   | 'autogol_contro'
   | 'tiro'
-  | 'corner'
+  | 'inattiva'
 
 /** Eventi che si possono correggere a posteriori dalla lista. */
 function eventoModificabile(e: Evento): boolean {
@@ -38,7 +40,7 @@ function eventoModificabile(e: Evento): boolean {
     e.tipo === 'gol_fatto' ||
     e.tipo === 'autogol_contro' ||
     e.tipo === 'tiro' ||
-    e.tipo === 'corner'
+    e.tipo === 'inattiva'
   )
 }
 
@@ -73,16 +75,19 @@ function SelectZona({
   )
 }
 
-/** Select riutilizzabile per lo schema di calcio d'angolo. */
+/** Select riutilizzabile per lo schema, filtrato sulla situazione. */
 function SelectSchema({
   value,
   onChange,
   schemi,
+  tipo,
 }: {
   value: number | ''
   onChange: (id: number | '') => void
-  schemi: SchemaCorner[]
+  schemi: Schema[]
+  tipo: TipoInattiva | null
 }) {
+  const disponibili = tipo === null ? [] : schemi.filter((s) => s.tipo === tipo)
   return (
     <select
       value={value}
@@ -90,7 +95,7 @@ function SelectSchema({
       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
     >
       <option value="">Nessuno schema</option>
-      {schemi.map((s) => (
+      {disponibili.map((s) => (
         <option key={s.id} value={s.id}>
           {s.nome}
         </option>
@@ -147,6 +152,7 @@ export default function ModificaPartita() {
   const [origineNuova, setOrigineNuova] = useState<OrigineTiro>('azione')
   const [battutaNuova, setBattutaNuova] = useState<ZonaTiro | ''>('')
   const [schemaNuovo, setSchemaNuovo] = useState<number | ''>('')
+  const [situazioneNuova, setSituazioneNuova] = useState<TipoInattiva>('corner')
 
   // --- Modal: modifica evento esistente ---
   const [eventoInModifica, setEventoInModifica] = useState<Evento | null>(null)
@@ -157,6 +163,7 @@ export default function ModificaPartita() {
   const [editOrigine, setEditOrigine] = useState<OrigineTiro>('azione')
   const [editBattuta, setEditBattuta] = useState<ZonaTiro | ''>('')
   const [editSchema, setEditSchema] = useState<number | ''>('')
+  const [editSituazione, setEditSituazione] = useState<TipoInattiva>('corner')
 
   if (!partita || !stagione || !avversari || !rosa || !eventi || !schemi) {
     return <div className="p-6">Caricamento...</div>
@@ -203,6 +210,7 @@ export default function ModificaPartita() {
     setOrigineNuova('azione')
     setBattutaNuova('')
     setSchemaNuovo('')
+    setSituazioneNuova('corner')
     setShowAggiungi(true)
   }
 
@@ -255,10 +263,11 @@ export default function ModificaPartita() {
         })
         break
       }
-      case 'corner':
+      case 'inattiva':
         await db.eventi.add({
           ...base,
-          tipo: 'corner',
+          tipo: 'inattiva',
+          situazione: situazioneNuova,
           schemaId: schemaNuovo === '' ? undefined : Number(schemaNuovo),
         })
         break
@@ -291,6 +300,7 @@ export default function ModificaPartita() {
     setEditOrigine('azione')
     setEditBattuta('')
     setEditSchema('')
+    setEditSituazione('corner')
     switch (e.tipo) {
       case 'gol_fatto':
         setEditMarcatore(e.giocatoreId)
@@ -311,9 +321,10 @@ export default function ModificaPartita() {
         setEditBattuta(e.zonaBattuta ?? '')
         setEditSchema(e.schemaId ?? '')
         break
-      case 'corner':
-        // il corner non ha giocatore: sblocchiamo il salvataggio
+      case 'inattiva':
+        // la battuta non ha giocatore: sblocchiamo il salvataggio
         setEditMarcatore(0)
+        setEditSituazione(e.situazione)
         setEditSchema(e.schemaId ?? '')
         break
     }
@@ -358,8 +369,9 @@ export default function ModificaPartita() {
         zona: editZona,
         esito: editEsito,
       } as Partial<Evento>)
-    } else if (eventoInModifica.tipo === 'corner') {
+    } else if (eventoInModifica.tipo === 'inattiva') {
       await db.eventi.update(eventoInModifica.id!, {
+        situazione: editSituazione,
         schemaId: editSchema === '' ? undefined : Number(editSchema),
       } as Partial<Evento>)
     }
@@ -370,7 +382,7 @@ export default function ModificaPartita() {
   const TIPI_EVENTO: { value: TipoEventoNuovo; label: string }[] = [
     { value: 'gol_fatto', label: 'Gol nostro' },
     { value: 'tiro', label: 'Tiro (non gol)' },
-    { value: 'corner', label: "Calcio d'angolo battuto" },
+    { value: 'inattiva', label: 'Palla inattiva battuta' },
     { value: 'gol_subito', label: 'Gol subito' },
     { value: 'autogol_pro', label: 'Autogol avversario (gol per noi)' },
     { value: 'autogol_contro', label: 'Autogol nostro (gol per loro)' },
@@ -386,7 +398,14 @@ export default function ModificaPartita() {
   // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
   const mostraOrigine = mostraZona
   const mostraSchemaNuovo =
-    tipoNuovo === 'corner' || (mostraOrigine && origineRichiedeSchema(origineNuova))
+    tipoNuovo === 'inattiva' || (mostraOrigine && origineRichiedeSchema(origineNuova))
+  /** Il tipo di palla inattiva a cui appartengono gli schemi da mostrare. */
+  const tipoSchemaNuovo: TipoInattiva | null =
+    tipoNuovo === 'inattiva'
+      ? situazioneNuova
+      : origineNuova === 'azione'
+      ? null
+      : origineNuova
   const mostraBattutaNuova = mostraOrigine && origineRichiedeBattuta(origineNuova)
 
   // Per la data: input datetime-local vuole "YYYY-MM-DDTHH:mm"
@@ -632,6 +651,26 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {tipoNuovo === 'inattiva' && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Situazione</label>
+              <select
+                value={situazioneNuova}
+                onChange={(e) => {
+                  setSituazioneNuova(e.target.value as TipoInattiva)
+                  setSchemaNuovo('')
+                }}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {TIPI_INATTIVA.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.icona} {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {mostraSchemaNuovo && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Schema</label>
@@ -639,12 +678,14 @@ export default function ModificaPartita() {
                 value={schemaNuovo}
                 onChange={setSchemaNuovo}
                 schemi={schemi}
+                tipo={tipoSchemaNuovo}
               />
-              {schemi.length === 0 && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Nessuno schema definito nel setup della stagione.
-                </p>
-              )}
+              {tipoSchemaNuovo !== null &&
+                schemi.filter((s) => s.tipo === tipoSchemaNuovo).length === 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Nessuno schema definito per questa situazione.
+                  </p>
+                )}
             </div>
           )}
 
@@ -695,13 +736,13 @@ export default function ModificaPartita() {
             ? 'Modifica gol'
             : eventoInModifica?.tipo === 'tiro'
             ? 'Modifica tiro'
-            : eventoInModifica?.tipo === 'corner'
-            ? 'Modifica corner'
+            : eventoInModifica?.tipo === 'inattiva'
+            ? 'Modifica palla inattiva'
             : 'Modifica autogol'
         }
       >
         <div className="flex flex-col gap-3">
-          {eventoInModifica?.tipo !== 'corner' && (
+          {eventoInModifica?.tipo !== 'inattiva' && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Giocatore</label>
               <select
@@ -813,17 +854,47 @@ export default function ModificaPartita() {
             </>
           )}
 
-          {(eventoInModifica?.tipo === 'corner' ||
+          {(eventoInModifica?.tipo === 'inattiva' ||
             ((eventoInModifica?.tipo === 'gol_fatto' ||
               eventoInModifica?.tipo === 'tiro') &&
               origineRichiedeSchema(editOrigine))) && (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Schema</label>
-              <SelectSchema
-                value={editSchema}
-                onChange={setEditSchema}
-                schemi={schemi}
-              />
+            <div className="flex flex-col gap-3">
+              {eventoInModifica?.tipo === 'inattiva' && (
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">
+                    Situazione
+                  </label>
+                  <select
+                    value={editSituazione}
+                    onChange={(e) => {
+                      setEditSituazione(e.target.value as TipoInattiva)
+                      setEditSchema('')
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+                  >
+                    {TIPI_INATTIVA.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.icona} {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Schema</label>
+                <SelectSchema
+                  value={editSchema}
+                  onChange={setEditSchema}
+                  schemi={schemi}
+                  tipo={
+                    eventoInModifica?.tipo === 'inattiva'
+                      ? editSituazione
+                      : editOrigine === 'azione'
+                      ? null
+                      : editOrigine
+                  }
+                />
+              </div>
             </div>
           )}
 

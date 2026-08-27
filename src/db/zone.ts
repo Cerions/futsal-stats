@@ -1,4 +1,10 @@
-import type { EsitoTiro, Evento, OrigineTiro, ZonaTiro } from './schema'
+import type {
+  EsitoTiro,
+  Evento,
+  OrigineTiro,
+  TipoInattiva,
+  ZonaTiro,
+} from './schema'
 
 /**
  * Modello xG semplificato per il calcio a 5.
@@ -108,10 +114,70 @@ export interface DefinizioneOrigine {
   icona: string
   /** chiede anche la zona da cui è stata battuta la palla */
   richiedeBattuta: boolean
-  /** chiede lo schema di calcio d'angolo */
+  /** chiede lo schema di palla inattiva */
   richiedeSchema: boolean
 }
 
+export interface DefinizioneInattiva {
+  value: TipoInattiva
+  label: string
+  labelCorta: string
+  icona: string
+  /** chiede anche la zona da cui è stata battuta la palla */
+  richiedeBattuta: boolean
+}
+
+/**
+ * I quattro tipi di palla inattiva. Su tutti si possono definire schemi;
+ * punizione e rimessa hanno in più un punto di battuta variabile
+ * (il corner parte dalla bandierina, il calcio d'inizio dal centro).
+ */
+export const TIPI_INATTIVA: DefinizioneInattiva[] = [
+  {
+    value: 'piazzato',
+    label: 'Punizione',
+    labelCorta: 'Punizione',
+    icona: '🧱',
+    richiedeBattuta: true,
+  },
+  {
+    value: 'corner',
+    label: "Calcio d'angolo",
+    labelCorta: 'Corner',
+    icona: '🚩',
+    richiedeBattuta: false,
+  },
+  {
+    value: 'rimessa',
+    label: 'Rimessa laterale',
+    labelCorta: 'Rimessa',
+    icona: '↔️',
+    richiedeBattuta: true,
+  },
+  {
+    value: 'inizio',
+    label: "Calcio d'inizio",
+    labelCorta: 'Inizio',
+    icona: '⚪',
+    richiedeBattuta: false,
+  },
+]
+
+const MAPPA_INATTIVE = new Map(TIPI_INATTIVA.map((t) => [t.value, t]))
+
+export function inattivaLabel(t: TipoInattiva): string {
+  return MAPPA_INATTIVE.get(t)?.label ?? t
+}
+
+export function inattivaLabelCorta(t: TipoInattiva): string {
+  return MAPPA_INATTIVE.get(t)?.labelCorta ?? t
+}
+
+export function inattivaIcona(t: TipoInattiva): string {
+  return MAPPA_INATTIVE.get(t)?.icona ?? ''
+}
+
+/** Le origini sono l'azione di gioco aperto più le quattro palle inattive. */
 export const ORIGINI_TIRO: DefinizioneOrigine[] = [
   {
     value: 'azione',
@@ -121,30 +187,7 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
     richiedeBattuta: false,
     richiedeSchema: false,
   },
-  {
-    value: 'piazzato',
-    label: 'Calcio piazzato',
-    labelCorta: 'Piazzato',
-    icona: '🧱',
-    richiedeBattuta: true,
-    richiedeSchema: false,
-  },
-  {
-    value: 'corner',
-    label: "Calcio d'angolo",
-    labelCorta: 'Corner',
-    icona: '🚩',
-    richiedeBattuta: false,
-    richiedeSchema: true,
-  },
-  {
-    value: 'rimessa',
-    label: 'Rimessa laterale',
-    labelCorta: 'Rimessa',
-    icona: '↔️',
-    richiedeBattuta: true,
-    richiedeSchema: false,
-  },
+  ...TIPI_INATTIVA.map((t) => ({ ...t, richiedeSchema: true })),
 ]
 
 const MAPPA_ORIGINI = new Map(ORIGINI_TIRO.map((o) => [o.value, o]))

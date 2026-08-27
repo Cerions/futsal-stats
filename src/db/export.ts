@@ -5,7 +5,7 @@ import type {
   SquadraAvversaria,
   Partita,
   Evento,
-  SchemaCorner,
+  Schema,
 } from './schema'
 
 /**
@@ -13,10 +13,12 @@ import type {
  * 1 → formato originale
  * 2 → aggiunge i tiri e la zona sui gol (xG)
  * 3 → aggiunge schemi d'angolo, eventi corner e origine delle conclusioni
+ * 4 → gli schemi valgono per tutte le palle inattive (hanno un tipo) e il
+ *     corner battuto diventa un evento 'inattiva' generico
  * L'import accetta tutte le versioni fino a questa: i file più vecchi
- * semplicemente non hanno i campi nuovi.
+ * semplicemente non hanno i campi nuovi e vengono normalizzati al volo.
  */
-export const VERSIONE_EXPORT = 3
+export const VERSIONE_EXPORT = 4
 
 export interface ExportData {
   formato: 'futsal-stats-export'
@@ -28,7 +30,7 @@ export interface ExportData {
   partite: Partita[]
   eventi: Evento[]
   /** assente nei file v1 e v2 */
-  schemi?: SchemaCorner[]
+  schemi?: Schema[]
 }
 
 /**

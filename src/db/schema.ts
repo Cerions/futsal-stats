@@ -68,20 +68,28 @@ export type ZonaTiro =
 export type EsitoTiro = 'parato' | 'fuori' | 'palo' | 'ribattuto'
 
 /**
- * Da cosa nasce la conclusione. 'azione' è il default: se il campo manca
- * su un evento vecchio, va letto come azione di gioco aperto.
- * - piazzato e rimessa portano anche la zona da cui è stata battuta la palla
- * - corner porta lo schema usato
+ * I quattro tipi di palla inattiva su cui si possono provare schemi.
+ * 'piazzato' è la punizione: il valore resta questo per non invalidare
+ * gli eventi già registrati con quel nome.
  */
-export type OrigineTiro = 'azione' | 'piazzato' | 'corner' | 'rimessa'
+export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
 
 /**
- * Schema di calcio d'angolo, definito a mano nel setup della stagione
- * e scelto in partita quando si batte un corner.
+ * Da cosa nasce la conclusione. 'azione' è il default: se il campo manca
+ * su un evento vecchio, va letto come azione di gioco aperto.
+ * Tutte le altre origini sono palle inattive e possono portare uno schema;
+ * punizione e rimessa portano anche la zona da cui è stata battuta la palla.
  */
-export interface SchemaCorner {
+export type OrigineTiro = 'azione' | TipoInattiva
+
+/**
+ * Schema di palla inattiva, definito a mano nel setup della stagione
+ * e scelto in partita quando si batte.
+ */
+export interface Schema {
   id?: number
   stagioneId: number
+  tipo: TipoInattiva
   nome: string
   note?: string
 }
@@ -91,7 +99,7 @@ export interface DatiOrigine {
   origine?: OrigineTiro
   /** solo per origine 'piazzato' e 'rimessa': da dove è stata battuta */
   zonaBattuta?: ZonaTiro
-  /** solo per origine 'corner' */
+  /** schema usato, per qualsiasi origine diversa da 'azione' */
   schemaId?: number
 }
 
@@ -118,4 +126,4 @@ export type Evento =
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_contro'; giocatoreId: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'cambio'; giocatoreEntraId: number; giocatoreEsceId: number }
   | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro'; giocatoreId: number; zona: ZonaTiro; esito: EsitoTiro } & DatiOrigine)
-  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'corner'; schemaId?: number }
+  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'inattiva'; situazione: TipoInattiva; schemaId?: number }

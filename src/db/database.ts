@@ -5,7 +5,7 @@ import type {
   Giocatore,
   Partita,
   Evento,
-  SchemaCorner,
+  Schema,
 } from './schema'
 
 export class FutsalDB extends Dexie {
@@ -14,7 +14,7 @@ export class FutsalDB extends Dexie {
   giocatori!: Table<Giocatore, number>
   partite!: Table<Partita, number>
   eventi!: Table<Evento, number>
-  schemi!: Table<SchemaCorner, number>
+  schemi!: Table<Schema, number>
 
   constructor() {
     super('FutsalStatsDB')
@@ -30,6 +30,30 @@ export class FutsalDB extends Dexie {
     this.version(2).stores({
       schemi: '++id, stagioneId, nome',
     })
+    // v3: gli schemi valgono per tutte le palle inattive, non solo i corner.
+    // Gli schemi esistenti diventano di tipo 'corner' e gli eventi 'corner'
+    // diventano eventi 'inattiva' con situazione 'corner'.
+    this.version(3)
+      .stores({
+        schemi: '++id, stagioneId, tipo, nome',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('schemi')
+          .toCollection()
+          .modify((s: { tipo?: string }) => {
+            if (s.tipo === undefined) s.tipo = 'corner'
+          })
+        await tx
+          .table('eventi')
+          .toCollection()
+          .modify((e: { tipo?: string; situazione?: string }) => {
+            if (e.tipo === 'corner') {
+              e.tipo = 'inattiva'
+              e.situazione = 'corner'
+            }
+          })
+      })
   }
 }
 

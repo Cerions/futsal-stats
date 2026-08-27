@@ -3,10 +3,17 @@ import type {
   Giocatore,
   OrigineTiro,
   Partita,
-  SchemaCorner,
+  Schema,
+  TipoInattiva,
   ZonaTiro,
 } from '../db/schema'
-import { esitoInPorta, origineDi, ORIGINI_TIRO, pesoZona } from '../db/zone'
+import {
+  esitoInPorta,
+  origineDi,
+  ORIGINI_TIRO,
+  pesoZona,
+  TIPI_INATTIVA,
+} from '../db/zone'
 import type { ConteggioZona } from '../components/CampoTiri'
 
 export interface StatsGiocatore {
@@ -354,61 +361,98 @@ export function statistichePerOrigine(eventi: Evento[]): StatsOrigine[] {
 }
 
 export interface StatsSchema {
-  /** null = corner battuti senza schema associato */
-  schema: SchemaCorner | null
-  cornerBattuti: number
+  /** null = battute registrate senza schema associato */
+  schema: Schema | null
+  battute: number
+  tiri: number
+  gol: number
+  xG: number
+}
+
+/** Righe di uno stesso tipo di palla inattiva. */
+export interface GruppoSchemi {
+  tipo: TipoInattiva
+  righe: StatsSchema[]
+  battute: number
   tiri: number
   gol: number
   xG: number
 }
 
 /**
- * Resa degli schemi di calcio d'angolo: quanti corner sono stati battuti con
- * ognuno, quanti tiri hanno prodotto e quanti gol.
+ * Resa degli schemi, raggruppata per tipo di palla inattiva: quante volte
+ * ognuno è stato battuto, quanti tiri ha prodotto e quanti gol.
  *
- * I corner e i tiri sono eventi separati, collegati dallo schema: un tiro
- * conta per uno schema se ha origine 'corner' e quello schemaId.
+ * La battuta e la conclusione sono eventi separati, collegati dallo schema:
+ * un tiro conta per uno schema se ha quell'origine e quello schemaId.
  */
 export function statistichePerSchema(
   eventi: Evento[],
-  schemi: SchemaCorner[]
-): StatsSchema[] {
-  const vuota = (schema: SchemaCorner | null): StatsSchema => ({
+  schemi: Schema[]
+): GruppoSchemi[] {
+  const vuota = (schema: Schema | null): StatsSchema => ({
     schema,
-    cornerBattuti: 0,
+    battute: 0,
     tiri: 0,
     gol: 0,
     xG: 0,
   })
 
-  // Chiave: id dello schema, oppure 0 per "senza schema"
-  const mappa = new Map<number, StatsSchema>()
-  mappa.set(0, vuota(null))
-  for (const s of schemi) mappa.set(s.id!, vuota(s))
+  // Una riga per schema, più una riga "senza schema" per ogni tipo.
+  // Chiave: id dello schema, oppure "<tipo>:0" per il senza schema.
+  const righe = new Map<string, StatsSchema>()
+  const tipoDiRiga = new Map<string, TipoInattiva>()
+  for (const t of TIPI_INATTIVA) {
+    righe.set(`${t.value}:0`, vuota(null))
+    tipoDiRiga.set(`${t.value}:0`, t.value)
+  }
+  for (const s of schemi) {
+    righe.set(String(s.id!), vuota(s))
+    tipoDiRiga.set(String(s.id!), s.tipo)
+  }
 
-  const riga = (schemaId?: number) => mappa.get(schemaId ?? 0) ?? mappa.get(0)!
+  /** Trova la riga giusta: quella dello schema, o il "senza schema" del tipo. */
+  const riga = (tipo: TipoInattiva, schemaId?: number) => {
+    if (schemaId !== undefined) {
+      const r = righe.get(String(schemaId))
+      if (r) return r
+    }
+    return righe.get(`${tipo}:0`)!
+  }
 
   for (const e of eventi) {
-    if (e.tipo === 'corner') {
-      riga(e.schemaId).cornerBattuti += 1
-    } else if (
-      (e.tipo === 'tiro' || e.tipo === 'gol_fatto') &&
-      origineDi(e) === 'corner'
-    ) {
-      const r = riga(e.schemaId)
+    if (e.tipo === 'inattiva') {
+      riga(e.situazione, e.schemaId).battute += 1
+    } else if (e.tipo === 'tiro' || e.tipo === 'gol_fatto') {
+      const origine = origineDi(e)
+      if (origine === 'azione') continue
+      const r = riga(origine, e.schemaId)
       r.tiri += 1
       if (e.tipo === 'gol_fatto') r.gol += 1
       if (e.zona !== undefined) r.xG += pesoZona(e.zona)
     }
   }
 
-  // La riga "senza schema" ha senso solo se ha davvero qualcosa dentro
-  return Array.from(mappa.values()).filter(
-    (r) => r.schema !== null || r.cornerBattuti > 0 || r.tiri > 0
-  )
+  return TIPI_INATTIVA.map((t) => {
+    const delTipo = Array.from(righe.entries())
+      .filter(([k]) => tipoDiRiga.get(k) === t.value)
+      .map(([, r]) => r)
+      // la riga "senza schema" si mostra solo se ha davvero qualcosa dentro
+      .filter((r) => r.schema !== null || r.battute > 0 || r.tiri > 0)
+    return {
+      tipo: t.value,
+      righe: delTipo,
+      battute: delTipo.reduce((n, r) => n + r.battute, 0),
+      tiri: delTipo.reduce((n, r) => n + r.tiri, 0),
+      gol: delTipo.reduce((n, r) => n + r.gol, 0),
+      xG: delTipo.reduce((n, r) => n + r.xG, 0),
+    }
+  })
 }
 
-/** Numero di corner battuti in una lista di eventi. */
-export function contaCorner(eventi: Evento[]): number {
-  return eventi.filter((e) => e.tipo === 'corner').length
+/** Numero di palle inattive battute, in totale o di un tipo solo. */
+export function contaInattive(eventi: Evento[], tipo?: TipoInattiva): number {
+  return eventi.filter(
+    (e) => e.tipo === 'inattiva' && (tipo === undefined || e.situazione === tipo)
+  ).length
 }

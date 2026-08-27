@@ -1,7 +1,9 @@
-import type { Evento, Giocatore, SchemaCorner } from '../db/schema'
+import type { Evento, Giocatore, Schema } from '../db/schema'
 import { nomeCorto } from './giocatore'
 import {
   esitoLabel,
+  inattivaIcona,
+  inattivaLabel,
   origineIcona,
   origineLabelCorta,
   zonaLabelCorta,
@@ -13,7 +15,7 @@ import {
 export function descriviEvento(
   e: Evento,
   rosa: Giocatore[],
-  schemi: SchemaCorner[] = []
+  schemi: Schema[] = []
 ): string {
   const nome = (id: number) => {
     const g = rosa.find((x) => x.id === id)
@@ -66,9 +68,10 @@ export function descriviEvento(
       return `🎯 Tiro di ${nome(e.giocatoreId)} — ${esitoLabel(
         e.esito
       ).toLowerCase()}${contesto(e)}`
-    case 'corner': {
+    case 'inattiva': {
       const schema = nomeSchema(e.schemaId)
-      return schema ? `🚩 Corner — ${schema}` : `🚩 Corner`
+      const testa = `${inattivaIcona(e.situazione)} ${inattivaLabel(e.situazione)}`
+      return schema ? `${testa} — ${schema}` : testa
     }
   }
 }

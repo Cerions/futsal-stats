@@ -27,8 +27,8 @@ App PWA per registrare statistiche di partite di calcio a 5.
 - [x] Export/import stagioni come JSON (cloud "povero" tra dispositivi)
 - [x] Statistiche aggregate giocatori: presenze, partite giocate, minuti, gol, assist, autogol, gol pro/contro in campo, plus/minus, con ordinamento per colonna
 - [x] xG semplificato con zone di tiro
-- [x] Origine delle conclusioni: azione, calcio piazzato, calcio d'angolo, rimessa laterale
-- [x] Schemi di calcio d'angolo definiti nel setup e scelti in partita, con resa per schema
+- [x] Origine delle conclusioni: azione, punizione, calcio d'angolo, rimessa laterale, calcio d'inizio
+- [x] Schemi per tutte le palle inattive, definiti nel setup e scelti in partita, con resa per schema
 - [x] PWA installabile su Android
 - [x] Deploy automatico su Netlify
 - [ ] xG subiti (xGA): zone anche sui tiri avversari
@@ -63,10 +63,11 @@ non trasformate.
 Tiri e gol passano dallo stesso bottone, **🎯 Tiro / Gol**, con un flusso a passi:
 
 1. **chi ha tirato** — tra i giocatori in campo (o autogol avversario)
-2. **come nasce** — azione, calcio piazzato, calcio d'angolo, rimessa laterale
+2. **come nasce** — azione, punizione, calcio d'angolo, rimessa laterale,
+   calcio d'inizio
 3. a seconda dell'origine:
-   - piazzato e rimessa → **da dove è stata battuta** la palla (mappa del campo)
-   - calcio d'angolo → **quale schema**
+   - punizione e rimessa → **da dove è stata battuta** la palla (mappa del campo)
+   - tutte le palle inattive → **quale schema**
 4. **da dove ha tirato** — mappa del campo, oppure *Non lo so* per saltare
    (il gol viene registrato lo stesso, ma non conta nell'xG)
 5. **esito** — gol, parato, fuori, palo, ribattuto
@@ -75,38 +76,55 @@ Tiri e gol passano dallo stesso bottone, **🎯 Tiro / Gol**, con un flusso a pa
 Il punto di battuta e la zona del tiro sono due cose distinte: chi batte una
 punizione spesso non è chi conclude.
 
-## Calci d'angolo e schemi
+## Palle inattive e schemi
 
-Gli schemi si scrivono a mano nel **setup della stagione** (nome + note
-facoltative) e si scelgono in partita.
+Le situazioni da fermo sono quattro, e su ognuna si possono definire schemi:
 
-Il bottone **🚩 Corner** registra il corner battuto con il suo schema, e poi
+| Situazione | Punto di battuta | Schemi |
+| --- | --- | --- |
+| 🧱 Punizione | scelto sulla mappa | sì |
+| 🚩 Calcio d'angolo | fisso (bandierina) | sì |
+| ↔️ Rimessa laterale | scelto sulla mappa | sì |
+| ⚪ Calcio d'inizio | fisso (centrocampo) | sì |
+
+Gli schemi si scrivono a mano nel **setup della stagione** — nome, note
+facoltative e la situazione a cui appartengono — e si scelgono in partita.
+
+Il bottone **🚩 Palla inattiva** registra la battuta con il suo schema, e poi
 chiede se ha prodotto una conclusione: se sì prosegue nel flusso del tiro con
 origine e schema già impostati.
 
-Corner e conclusione restano due eventi separati, ed è quello che rende leggibile
-la resa di uno schema: *Corner* conta quante volte lo hai battuto, *Tiri* quante
-volte ne è uscito qualcosa. Uno schema con tanti corner e pochi tiri gira a
-vuoto.
+Battuta e conclusione restano due eventi separati, ed è quello che rende
+leggibile la resa di uno schema: *Battute* conta quante volte lo hai giocato,
+*Tiri* quante volte ne è uscito qualcosa. Uno schema con tante battute e pochi
+tiri gira a vuoto.
+
+Se scegli una palla inattiva direttamente dentro il flusso del tiro (senza
+passare dal bottone dedicato), la battuta viene registrata lo stesso in
+automatico, così il conteggio non si sbilancia.
 
 Dove si legge:
-- **schermata partita**: riga con tiri, xG e corner sotto il punteggio, più la
-  mappa dei tiri per zona (gol/tiri, intensità in base al volume);
+- **schermata partita**: riga con tiri, xG e palle inattive sotto il punteggio,
+  più la mappa dei tiri per zona (gol/tiri, intensità in base al volume);
 - **statistiche stagione**: tab *Tiri & xG* (tiri, tiri in porta, conversione,
   xG e differenza gol − xG per giocatore, più la mappa di stagione) e tab
-  *Palle inattive* (resa per tipo di situazione e per schema d'angolo).
+  *Palle inattive* (resa per tipo di situazione, e una tabella di schemi per
+  ogni situazione).
 
 Tutto quanto sopra si aggiunge e si corregge anche a partita finita, da
-*Modifica partita*: origine, punto di battuta, zona, schema, e i corner stessi.
+*Modifica partita*: origine, punto di battuta, zona, schema, e le battute stesse.
 
 ## Formato di export
 
-L'export JSON è alla versione 3 (aggiunge schemi d'angolo, eventi corner e
-origine delle conclusioni). L'import accetta anche i file di versione 1 e 2: le
-stagioni vecchie si caricano normalmente, semplicemente senza i campi nuovi.
+L'export JSON è alla versione 4 (gli schemi hanno un tipo, il corner battuto è
+diventato un evento `inattiva` generico). L'import accetta anche i file di
+versione 1, 2 e 3 e li normalizza al volo: le stagioni vecchie si caricano
+normalmente, semplicemente senza i campi nuovi.
 
-Lo schema del database locale è alla versione Dexie 2: all'apertura la tabella
-`schemi` viene creata da sola, i dati esistenti non vengono toccati.
+Lo schema del database locale è alla versione Dexie 3. All'apertura la
+migrazione è automatica: gli schemi esistenti diventano di tipo `corner` e i
+vecchi eventi `corner` diventano eventi `inattiva` con situazione `corner`.
+Nessun dato viene perso.
 
 ## Sviluppo locale
 ```bash

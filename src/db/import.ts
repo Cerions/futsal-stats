@@ -68,12 +68,15 @@ export async function importaStagione(data: ExportData): Promise<number> {
         mappaAvversari.set(vecchioId, nuovoId)
       }
 
-      // 3-bis. Mappa schemi d'angolo (assenti negli export v1 e v2)
+      // 3-bis. Mappa schemi (assenti negli export v1 e v2).
+      // Negli export v3 gli schemi erano solo di calcio d'angolo e non
+      // avevano il campo tipo: li normalizziamo qui.
       const mappaSchemi = new Map<number, number>()
       for (const s of data.schemi ?? []) {
         const vecchioId = s.id!
         const nuovoId = await db.schemi.add({
           stagioneId: nuovaStagioneId,
+          tipo: s.tipo ?? 'corner',
           nome: s.nome,
           note: s.note,
         })
@@ -107,7 +110,7 @@ export async function importaStagione(data: ExportData): Promise<number> {
 
         // riscriviamo i riferimenti a giocatori e schemi dentro l'evento
         const eventoRimappato = rimappaEvento(
-          e,
+          normalizzaEvento(e),
           nuovaPartitaId,
           mappaGiocatori,
           mappaSchemi
@@ -120,6 +123,24 @@ export async function importaStagione(data: ExportData): Promise<number> {
       return nuovaStagioneId
     }
   )
+}
+
+/**
+ * Riporta al formato corrente gli eventi degli export più vecchi.
+ * Negli export fino alla v3 il calcio d'angolo battuto era un evento 'corner'
+ * a sé; oggi è un evento 'inattiva' con situazione 'corner'.
+ */
+function normalizzaEvento(e: Evento): Evento {
+  const grezzo = e as unknown as { tipo: string; schemaId?: number }
+  if (grezzo.tipo === 'corner') {
+    return {
+      ...(e as object),
+      tipo: 'inattiva',
+      situazione: 'corner',
+      schemaId: grezzo.schemaId,
+    } as Evento
+  }
+  return e
 }
 
 /**
@@ -202,8 +223,13 @@ function rimappaEvento(
         esito: e.esito,
       }
     }
-    case 'corner':
-      return { ...base, tipo: 'corner', schemaId: schemaRimappato(e.schemaId) }
+    case 'inattiva':
+      return {
+        ...base,
+        tipo: 'inattiva',
+        situazione: e.situazione,
+        schemaId: schemaRimappato(e.schemaId),
+      }
   }
 }
 

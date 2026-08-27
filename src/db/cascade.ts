@@ -36,10 +36,10 @@ export async function eliminaStagione(stagioneId: number) {
 }
 
 /**
- * Cancella uno schema di calcio d'angolo e toglie il riferimento dagli eventi
- * che lo usavano, così corner e tiri restano ma senza schema associato.
+ * Cancella uno schema di palla inattiva e toglie il riferimento dagli eventi
+ * che lo usavano, così battute e tiri restano ma senza schema associato.
  */
-export async function eliminaSchemaCorner(schemaId: number) {
+export async function eliminaSchema(schemaId: number) {
   await db.transaction('rw', [db.schemi, db.eventi], async () => {
     await db.eventi
       .filter((e) => 'schemaId' in e && e.schemaId === schemaId)

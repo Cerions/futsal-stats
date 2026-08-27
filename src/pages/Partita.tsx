@@ -15,7 +15,8 @@ import type {
   Giocatore,
   OrigineTiro,
   Partita as PartitaType,
-  SchemaCorner,
+  Schema,
+  TipoInattiva,
   ZonaTiro,
 } from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
@@ -23,11 +24,14 @@ import { nomeCompleto, nomeCorto } from '../utils/giocatore'
 import TagBadge from '../components/TagBadge'
 import { descriviEvento } from '../utils/evento'
 import CampoTiri from '../components/CampoTiri'
-import { conteggiPerZona, contaCorner } from '../utils/statistiche'
+import { conteggiPerZona, contaInattive } from '../utils/statistiche'
 import {
   ESITI_TIRO,
   ORIGINI_TIRO,
+  TIPI_INATTIVA,
   formatXG,
+  inattivaIcona,
+  inattivaLabel,
   origineLabel,
   origineRichiedeBattuta,
   origineRichiedeSchema,
@@ -306,7 +310,7 @@ function Live({
   partita: PartitaType
   rosa: Giocatore[]
   eventi: Evento[]
-  schemi: SchemaCorner[]
+  schemi: Schema[]
   avversarioNome: string
   squadraNome: string
   stagioneId: number
@@ -368,10 +372,11 @@ function Live({
   // true quando il flusso arriva dal bottone Corner: origine e schema già decisi
   const [origineFissata, setOrigineFissata] = useState(false)
 
-  // ----- STATE: corner -----
-  const [showCorner, setShowCorner] = useState(false)
-  const [passoCorner, setPassoCorner] = useState<'schema' | 'esito'>('schema')
-  const [cornerSchemaId, setCornerSchemaId] = useState<number | null>(null)
+  // ----- STATE: palla inattiva battuta -----
+  const [showInattiva, setShowInattiva] = useState(false)
+  const [passoInattiva, setPassoInattiva] = useState<'tipo' | 'schema' | 'esito'>('tipo')
+  const [inattivaTipo, setInattivaTipo] = useState<TipoInattiva>('corner')
+  const [inattivaSchemaId, setInattivaSchemaId] = useState<number | null>(null)
 
   const [showMappa, setShowMappa] = useState(false)
 
@@ -384,7 +389,9 @@ function Live({
   const tiriConZona = eventi.filter(
     (e) => e.tipo === 'tiro' || (e.tipo === 'gol_fatto' && e.zona !== undefined)
   ).length
-  const cornerBattuti = contaCorner(eventi)
+  const inattiveBattute = contaInattive(eventi)
+  /** Gli schemi disponibili per una certa situazione. */
+  const schemiPerTipo = (t: TipoInattiva) => schemi.filter((s) => s.tipo === t)
 
   // ----- AZIONI -----
 
@@ -451,8 +458,13 @@ function Live({
 
   function scegliTiratore(giocatoreId: number) {
     setTiroGiocatoreId(giocatoreId)
-    // Se il flusso arriva dal corner, origine e schema sono già decisi
-    setPasso(origineFissata ? 'zona' : 'origine')
+    if (!origineFissata) {
+      setPasso('origine')
+      return
+    }
+    // Il flusso arriva dalla palla inattiva: origine e schema sono già decisi,
+    // ma punizione e rimessa vogliono ancora il punto di battuta.
+    setPasso(origineRichiedeBattuta(tiroOrigine) ? 'battuta' : 'zona')
   }
 
   function scegliOrigine(o: OrigineTiro) {
@@ -460,13 +472,18 @@ function Live({
     setTiroBattuta(null)
     setTiroSchemaId(null)
     if (origineRichiedeBattuta(o)) setPasso('battuta')
-    else if (origineRichiedeSchema(o)) setPasso('schema')
+    else if (origineRichiedeSchema(o) && schemiPerTipo(o as TipoInattiva).length > 0)
+      setPasso('schema')
     else setPasso('zona')
   }
 
   function scegliBattuta(z: ZonaTiro) {
     setTiroBattuta(z)
-    setPasso(origineRichiedeSchema(tiroOrigine) ? 'schema' : 'zona')
+    const chiediSchema =
+      !origineFissata &&
+      origineRichiedeSchema(tiroOrigine) &&
+      schemiPerTipo(tiroOrigine as TipoInattiva).length > 0
+    setPasso(chiediSchema ? 'schema' : 'zona')
   }
 
   function scegliSchema(schemaId: number | null) {
@@ -486,7 +503,7 @@ function Live({
         setPasso('giocatore')
         break
       case 'battuta':
-        setPasso('origine')
+        setPasso(origineFissata ? 'giocatore' : 'origine')
         break
       case 'schema':
         setPasso(origineRichiedeBattuta(tiroOrigine) ? 'battuta' : 'origine')
@@ -516,8 +533,26 @@ function Live({
     }
   }
 
+  /**
+   * Se la conclusione nasce da una palla inattiva scelta dentro questo flusso
+   * (e non arriva dal bottone dedicato, che l'ha già registrata), salva anche
+   * l'evento della battuta: così il conteggio delle battute resta completo.
+   */
+  async function registraBattutaImplicita() {
+    if (origineFissata || tiroOrigine === 'azione') return
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tempoGioco,
+      tipo: 'inattiva',
+      situazione: tiroOrigine,
+      schemaId: tiroSchemaId ?? undefined,
+    })
+  }
+
   async function registraTiroNonGol(esito: EsitoTiro) {
     if (tiroGiocatoreId === null || tiroZona === null) return
+    await registraBattutaImplicita()
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
@@ -533,6 +568,7 @@ function Live({
 
   async function registraTiroGol(assistId: number | null) {
     if (tiroGiocatoreId === null) return
+    await registraBattutaImplicita()
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
@@ -559,35 +595,45 @@ function Live({
   }
   const titoloPassoTiro = TITOLI_PASSO[passo]
 
-  // ----- CORNER -----
+  // ----- PALLA INATTIVA BATTUTA -----
 
-  function apriCorner() {
-    setCornerSchemaId(null)
-    setPassoCorner(schemi.length > 0 ? 'schema' : 'esito')
-    setShowCorner(true)
+  function apriInattiva() {
+    setInattivaSchemaId(null)
+    setInattivaTipo('corner')
+    setPassoInattiva('tipo')
+    setShowInattiva(true)
   }
 
-  function chiudiCorner() {
-    setShowCorner(false)
-    setCornerSchemaId(null)
-    setPassoCorner('schema')
+  function chiudiInattiva() {
+    setShowInattiva(false)
+    setInattivaSchemaId(null)
+    setPassoInattiva('tipo')
+  }
+
+  function scegliTipoInattiva(t: TipoInattiva) {
+    setInattivaTipo(t)
+    setInattivaSchemaId(null)
+    // se per questa situazione non ci sono schemi, salta direttamente all'esito
+    setPassoInattiva(schemiPerTipo(t).length > 0 ? 'schema' : 'esito')
   }
 
   /**
-   * Salva il corner battuto. Se ha prodotto una conclusione, prosegue nel
-   * flusso del tiro con origine e schema già impostati.
+   * Salva la palla inattiva battuta. Se ha prodotto una conclusione, prosegue
+   * nel flusso del tiro con origine e schema già impostati.
    */
-  async function salvaCorner(conTiro: boolean) {
-    const schemaId = cornerSchemaId
+  async function salvaInattiva(conTiro: boolean) {
+    const schemaId = inattivaSchemaId
+    const situazione = inattivaTipo
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tempoGioco,
-      tipo: 'corner',
+      tipo: 'inattiva',
+      situazione,
       schemaId: schemaId ?? undefined,
     })
-    chiudiCorner()
-    if (conTiro) apriTiro({ origine: 'corner', schemaId })
+    chiudiInattiva()
+    if (conTiro) apriTiro({ origine: situazione, schemaId })
   }
 
   async function eseguiCambio(entraId: number) {
@@ -744,7 +790,7 @@ function Live({
         </div>
 
         {/* Riga xG */}
-        {(tiriTotali > 0 || cornerBattuti > 0) && (
+        {(tiriTotali > 0 || inattiveBattute > 0) && (
           <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3 flex-wrap text-xs text-slate-400">
             <span>
               Tiri <span className="font-semibold text-slate-200">{tiriTotali}</span>
@@ -756,12 +802,14 @@ function Live({
                 {formatXG(xgPartita)}
               </span>
             </span>
-            {cornerBattuti > 0 && (
+            {inattiveBattute > 0 && (
               <>
                 <span className="text-slate-600">•</span>
                 <span>
-                  Corner{' '}
-                  <span className="font-semibold text-slate-200">{cornerBattuti}</span>
+                  Inattive{' '}
+                  <span className="font-semibold text-slate-200">
+                    {inattiveBattute}
+                  </span>
                 </span>
               </>
             )}
@@ -818,10 +866,10 @@ function Live({
           </div>
 
           <button
-            onClick={apriCorner}
+            onClick={apriInattiva}
             className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold mb-4"
           >
-            🚩 Corner
+            🚩 Palla inattiva
           </button>
 
           {/* Banner intervallo */}
@@ -1202,21 +1250,46 @@ function Live({
         )}
       </Modal>
 
-      {/* ----- MODAL: corner ----- */}
+      {/* ----- MODAL: palla inattiva battuta ----- */}
       <Modal
-        open={showCorner}
-        onClose={chiudiCorner}
-        title={passoCorner === 'schema' ? 'Che schema?' : 'Corner battuto'}
+        open={showInattiva}
+        onClose={chiudiInattiva}
+        title={
+          passoInattiva === 'tipo'
+            ? 'Che palla inattiva?'
+            : passoInattiva === 'schema'
+            ? 'Che schema?'
+            : `${inattivaLabel(inattivaTipo)} battuta`
+        }
       >
-        {passoCorner === 'schema' ? (
+        {passoInattiva === 'tipo' && (
+          <div className="flex flex-col gap-2">
+            {TIPI_INATTIVA.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => scegliTipoInattiva(t.value)}
+                className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left flex items-center gap-3"
+              >
+                <span className="text-xl">{t.icona}</span>
+                <span className="flex-1 font-semibold">{t.label}</span>
+                <span className="text-xs text-slate-500">
+                  {schemiPerTipo(t.value).length}{' '}
+                  {schemiPerTipo(t.value).length === 1 ? 'schema' : 'schemi'}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {passoInattiva === 'schema' && (
           <>
             <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
-              {schemi.map((s) => (
+              {schemiPerTipo(inattivaTipo).map((s) => (
                 <li key={s.id}>
                   <button
                     onClick={() => {
-                      setCornerSchemaId(s.id!)
-                      setPassoCorner('esito')
+                      setInattivaSchemaId(s.id!)
+                      setPassoInattiva('esito')
                     }}
                     className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
                   >
@@ -1228,50 +1301,61 @@ function Live({
                 </li>
               ))}
             </ul>
-            <div className="border-t border-slate-700 pt-3">
+            <div className="border-t border-slate-700 pt-3 flex gap-2">
+              <button
+                onClick={() => setPassoInattiva('tipo')}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
               <button
                 onClick={() => {
-                  setCornerSchemaId(null)
-                  setPassoCorner('esito')
+                  setInattivaSchemaId(null)
+                  setPassoInattiva('esito')
                 }}
-                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
                 Nessuno schema
               </button>
             </div>
           </>
-        ) : (
+        )}
+
+        {passoInattiva === 'esito' && (
           <>
             <p className="text-sm text-slate-400 mb-3">
-              {cornerSchemaId !== null
-                ? schemi.find((s) => s.id === cornerSchemaId)?.nome ?? 'Schema'
-                : 'Senza schema'}
+              {inattivaIcona(inattivaTipo)} {inattivaLabel(inattivaTipo)} —{' '}
+              {inattivaSchemaId !== null
+                ? schemi.find((s) => s.id === inattivaSchemaId)?.nome ?? 'schema'
+                : 'senza schema'}
               . Ha prodotto una conclusione?
             </p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => salvaCorner(true)}
+                onClick={() => salvaInattiva(true)}
                 className="bg-emerald-600 hover:bg-emerald-500 px-4 py-3 rounded-lg font-bold"
               >
                 Sì, registra il tiro
               </button>
               <button
-                onClick={() => salvaCorner(false)}
+                onClick={() => salvaInattiva(false)}
                 className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
               >
-                No, solo il corner
+                No, solo la battuta
               </button>
             </div>
-            {schemi.length > 0 && (
-              <div className="border-t border-slate-700 mt-3 pt-3">
-                <button
-                  onClick={() => setPassoCorner('schema')}
-                  className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
-                >
-                  ← Cambia schema
-                </button>
-              </div>
-            )}
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={() =>
+                  setPassoInattiva(
+                    schemiPerTipo(inattivaTipo).length > 0 ? 'schema' : 'tipo'
+                  )
+                }
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+            </div>
           </>
         )}
       </Modal>

@@ -5,9 +5,16 @@ import { db } from '../db/database'
 import { RUOLI, ruoloLabel, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
-import type { Ruolo, Giocatore, SquadraAvversaria, SchemaCorner } from '../db/schema'
+import type {
+  Ruolo,
+  Giocatore,
+  SquadraAvversaria,
+  Schema,
+  TipoInattiva,
+} from '../db/schema'
+import { TIPI_INATTIVA } from '../db/zone'
 import { nomeCompleto } from '../utils/giocatore'
-import { eliminaSchemaCorner } from '../db/cascade'
+import { eliminaSchema as cascadeEliminaSchema } from '../db/cascade'
 
 export default function SetupStagione() {
   const { id } = useParams()
@@ -117,21 +124,24 @@ export default function SetupStagione() {
     await db.avversari.delete(avvId)
   }
 
-  // ----- MODAL SCHEMA CALCIO D'ANGOLO -----
+  // ----- MODAL SCHEMA PALLA INATTIVA -----
   const [showSchema, setShowSchema] = useState(false)
-  const [schemaInModifica, setSchemaInModifica] = useState<SchemaCorner | null>(null)
+  const [schemaInModifica, setSchemaInModifica] = useState<Schema | null>(null)
+  const [formSchemaTipo, setFormSchemaTipo] = useState<TipoInattiva>('corner')
   const [formSchemaNome, setFormSchemaNome] = useState('')
   const [formSchemaNote, setFormSchemaNote] = useState('')
 
-  function apriNuovoSchema() {
+  function apriNuovoSchema(tipo: TipoInattiva) {
     setSchemaInModifica(null)
+    setFormSchemaTipo(tipo)
     setFormSchemaNome('')
     setFormSchemaNote('')
     setShowSchema(true)
   }
 
-  function apriModificaSchema(s: SchemaCorner) {
+  function apriModificaSchema(s: Schema) {
     setSchemaInModifica(s)
+    setFormSchemaTipo(s.tipo)
     setFormSchemaNome(s.nome)
     setFormSchemaNote(s.note ?? '')
     setShowSchema(true)
@@ -142,9 +152,13 @@ export default function SetupStagione() {
     if (!nome) return
     const note = formSchemaNote.trim() || undefined
     if (schemaInModifica) {
-      await db.schemi.update(schemaInModifica.id!, { nome, note })
+      await db.schemi.update(schemaInModifica.id!, {
+        tipo: formSchemaTipo,
+        nome,
+        note,
+      })
     } else {
-      await db.schemi.add({ stagioneId, nome, note })
+      await db.schemi.add({ stagioneId, tipo: formSchemaTipo, nome, note })
     }
     setShowSchema(false)
   }
@@ -152,11 +166,11 @@ export default function SetupStagione() {
   async function eliminaSchema(schemaId: number) {
     if (
       !confirm(
-        'Eliminare questo schema? I corner e i tiri già registrati restano, ma perdono il riferimento allo schema.'
+        'Eliminare questo schema? Le battute e i tiri già registrati restano, ma perdono il riferimento allo schema.'
       )
     )
       return
-    await eliminaSchemaCorner(schemaId)
+    await cascadeEliminaSchema(schemaId)
   }
 
   if (stagione === undefined) {
@@ -295,61 +309,79 @@ export default function SetupStagione() {
         )}
       </section>
 
-      {/* Sezione Schemi calcio d'angolo */}
+      {/* Sezione Schemi palle inattive */}
       <section className="mb-8">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold">
-            Schemi calcio d'angolo{' '}
-            <span className="text-slate-400 text-sm">({schemi?.length ?? 0})</span>
-          </h2>
-          <button
-            onClick={apriNuovoSchema}
-            className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
-          >
-            + Schema
-          </button>
-        </div>
+        <h2 className="text-lg font-semibold mb-1">
+          Schemi palle inattive{' '}
+          <span className="text-slate-400 text-sm">({schemi?.length ?? 0})</span>
+        </h2>
         <p className="text-xs text-slate-500 mb-3">
-          Li scegli in partita quando batti un corner, e a fine stagione vedi
-          quale rende di più.
+          Li scegli in partita quando batti, e a fine stagione vedi quali
+          rendono e quali girano a vuoto.
         </p>
 
-        {schemi && schemi.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {schemi.map((s) => (
-              <li
-                key={s.id}
-                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
-              >
-                <span className="text-lg">🚩</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">{s.nome}</div>
-                  {s.note && (
-                    <div className="text-xs text-slate-400 truncate">{s.note}</div>
-                  )}
+        <div className="flex flex-col gap-4">
+          {TIPI_INATTIVA.map((t) => {
+            const delTipo = (schemi ?? []).filter((s) => s.tipo === t.value)
+            return (
+              <div key={t.value}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-slate-300">
+                    <span className="mr-1">{t.icona}</span>
+                    {t.label}{' '}
+                    <span className="text-slate-500 font-normal">
+                      ({delTipo.length})
+                    </span>
+                  </h3>
+                  <button
+                    onClick={() => apriNuovoSchema(t.value)}
+                    className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-xs"
+                  >
+                    + Schema
+                  </button>
                 </div>
-                <button
-                  onClick={() => apriModificaSchema(s)}
-                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                  title="Modifica"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => eliminaSchema(s.id!)}
-                  className="text-slate-400 hover:text-red-400 text-sm px-2"
-                  title="Elimina"
-                >
-                  🗑️
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-slate-500 text-sm italic">
-            Nessuno schema. Senza schemi puoi comunque registrare i corner.
-          </p>
-        )}
+
+                {delTipo.length > 0 ? (
+                  <ul className="flex flex-col gap-2">
+                    {delTipo.map((s) => (
+                      <li
+                        key={s.id}
+                        className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{s.nome}</div>
+                          {s.note && (
+                            <div className="text-xs text-slate-400 truncate">
+                              {s.note}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => apriModificaSchema(s)}
+                          className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                          title="Modifica"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => eliminaSchema(s.id!)}
+                          className="text-slate-400 hover:text-red-400 text-sm px-2"
+                          title="Elimina"
+                        >
+                          🗑️
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-slate-500 text-xs italic">
+                    Nessuno schema. Puoi comunque registrare le battute senza.
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </section>
 
       {/* Modal giocatore (nuovo o modifica) */}
@@ -463,9 +495,23 @@ export default function SetupStagione() {
       <Modal
         open={showSchema}
         onClose={() => setShowSchema(false)}
-        title={schemaInModifica ? 'Modifica schema' : "Nuovo schema d'angolo"}
+        title={schemaInModifica ? 'Modifica schema' : 'Nuovo schema'}
       >
         <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Situazione</label>
+            <select
+              value={formSchemaTipo}
+              onChange={(e) => setFormSchemaTipo(e.target.value as TipoInattiva)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+            >
+              {TIPI_INATTIVA.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.icona} {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Nome</label>
             <input
