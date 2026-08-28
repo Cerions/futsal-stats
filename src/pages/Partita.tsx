@@ -126,7 +126,9 @@ function PreMatch({
     new Set(partita.titolari)
   )
 
-  const MAX_CONVOCATI = 12
+  // Il tetto dei 12 convocati è una regola di gara: in amichevole non ha
+  // senso, ci si porta chi c'è. null = nessun limite.
+  const maxConvocati: number | null = partita.tag === 'Amichevole' ? null : 12
   const MAX_TITOLARI = 5 // calcio a 5
 
   function toggleConvocato(id: number) {
@@ -138,7 +140,7 @@ function PreMatch({
       nextTit.delete(id)
       setTitolari(nextTit)
     } else {
-      if (next.size >= MAX_CONVOCATI) return
+      if (maxConvocati !== null && next.size >= maxConvocati) return
       next.add(id)
     }
     setConvocati(next)
@@ -208,7 +210,12 @@ function PreMatch({
       {/* Contatori */}
       <div className="flex gap-4 mb-4 text-sm">
         <div className="bg-slate-800 px-3 py-1.5 rounded-lg">
-          Convocati: <span className="font-bold">{convocati.size}</span>/{MAX_CONVOCATI}
+          Convocati: <span className="font-bold">{convocati.size}</span>
+          {maxConvocati !== null ? (
+            `/${maxConvocati}`
+          ) : (
+            <span className="text-slate-400"> · amichevole, nessun limite</span>
+          )}
         </div>
         <div className="bg-slate-800 px-3 py-1.5 rounded-lg">
           Titolari: <span className="font-bold">{titolari.size}</span>/{MAX_TITOLARI}

@@ -38,7 +38,7 @@ export default function Dashboard() {
   )
   const [numeroTempi, setNumeroTempi] = useState(2)
   const [durataTempo, setDurataTempo] = useState(20)
-  const [tempoEffettivo, setTempoEffettivo] = useState(true)
+  const [tempoEffettivo, setTempoEffettivo] = useState(false)
   const [tagPartita, setTagPartita] = useState<TagPartita | undefined>(undefined)
 
   async function creaPartita() {
