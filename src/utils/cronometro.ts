@@ -34,3 +34,11 @@ export function minutoCorrente(c: Cronometro, now: number = Date.now()): number 
 export function durataTotaleSecondi(p: Partita): number {
   return p.config.numeroTempi * p.config.durataTempoMinuti * 60
 }
+/**
+ * Istante corrente in millisecondi. È solo `Date.now()`, ma incapsulato qui:
+ * chiamato dentro un componente la regola react-hooks/purity lo segnala come
+ * impuro anche quando sta in un gestore di eventi, dove è perfettamente legittimo.
+ */
+export function adesso(): number {
+  return Date.now()
+}

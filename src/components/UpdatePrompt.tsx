@@ -1,4 +1,3 @@
-// @ts-ignore - virtual module from vite-plugin-pwa
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 // Controlla aggiornamenti ogni 30 secondi quando l'app è aperta

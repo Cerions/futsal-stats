@@ -5,6 +5,7 @@ import { db } from '../db/database'
 import Modal from '../components/Modal'
 import { ruoloShort, ordineRuolo } from '../db/ruoli'
 import {
+  adesso as oraCorrente,
   secondiTrascorsi,
   formatCronometro,
   minutoCorrente,
@@ -16,12 +17,14 @@ import type {
   OrigineTiro,
   Partita as PartitaType,
   Schema,
+  SquadraAvversaria,
   TipoInattiva,
   ZonaTiro,
 } from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
 import { nomeCompleto, nomeCorto } from '../utils/giocatore'
 import TagBadge from '../components/TagBadge'
+import TagSelector from '../components/TagSelector'
 import { descriviEvento } from '../utils/evento'
 import CampoTiri from '../components/CampoTiri'
 import { conteggiPerZona, contaInattive } from '../utils/statistiche'
@@ -56,6 +59,13 @@ export default function Partita() {
     () => (partita ? db.avversari.get(partita.avversarioId) : undefined),
     [partita?.avversarioId]
   )
+  const avversari = useLiveQuery(
+    () =>
+      partita
+        ? db.avversari.where('stagioneId').equals(partita.stagioneId).toArray()
+        : [],
+    [partita?.stagioneId]
+  )
   const rosa = useLiveQuery(
     () =>
       partita
@@ -85,7 +95,7 @@ export default function Partita() {
       <PreMatch
         partita={partita}
         rosa={rosa}
-        avversarioNome={avversario.nome}
+        avversari={avversari ?? []}
         stagioneId={stagione.id!}
       />
     )
@@ -105,25 +115,26 @@ export default function Partita() {
 }
 
 // ===========================================================================
-// PRE-MATCH: scelta convocati + titolari
+// PRE-MATCH: impostazioni, convocati, titolari, e poi il via
 // ===========================================================================
 
 function PreMatch({
   partita,
   rosa,
-  avversarioNome,
+  avversari,
   stagioneId,
 }: {
   partita: PartitaType
   rosa: Giocatore[]
-  avversarioNome: string
+  avversari: SquadraAvversaria[]
   stagioneId: number
 }) {
-  const [convocati, setConvocati] = useState<Set<number>>(
-    new Set(partita.convocati)
-  )
-  const [titolari, setTitolari] = useState<Set<number>>(
-    new Set(partita.titolari)
+  const [showInizio, setShowInizio] = useState(false)
+  // I due campi numerici hanno stato locale: salvarli a ogni tasto premuto
+  // renderebbe impossibile svuotare la casella per riscrivere il numero.
+  const [tempiBozza, setTempiBozza] = useState(String(partita.config.numeroTempi))
+  const [durataBozza, setDurataBozza] = useState(
+    String(partita.config.durataTempoMinuti)
   )
 
   // Il tetto dei 12 convocati è una regola di gara: in amichevole non ha
@@ -131,57 +142,73 @@ function PreMatch({
   const maxConvocati: number | null = partita.tag === 'Amichevole' ? null : 12
   const MAX_TITOLARI = 5 // calcio a 5
 
-  function toggleConvocato(id: number) {
-    const next = new Set(convocati)
-    if (next.has(id)) {
-      next.delete(id)
-      // Se era anche titolare, lo togliamo
-      const nextTit = new Set(titolari)
-      nextTit.delete(id)
-      setTitolari(nextTit)
-    } else {
-      if (maxConvocati !== null && next.size >= maxConvocati) return
-      next.add(id)
-    }
-    setConvocati(next)
+  const convocati = new Set(partita.convocati)
+  const titolari = new Set(partita.titolari)
+
+  // Tutto si salva subito: si torna su questa schermata più volte mentre
+  // la squadra arriva, e non deve esserci niente da ricordarsi di confermare.
+  // Ogni modifica rilegge il record dentro la transazione invece di partire
+  // dalla copia in mano al componente: due interventi ravvicinati (esco da un
+  // campo numerico e nello stesso istante spunto una casella) altrimenti si
+  // sovrascrivono a vicenda.
+  async function modifica(cambia: (p: PartitaType) => void) {
+    await db.partite.where('id').equals(partita.id!).modify(cambia)
   }
 
-  function toggleTitolare(id: number) {
-    if (!convocati.has(id)) return // solo i convocati possono essere titolari
-    const next = new Set(titolari)
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      if (next.size >= MAX_TITOLARI) return
-      next.add(id)
-    }
-    setTitolari(next)
+  async function aggiorna(campi: Partial<PartitaType>) {
+    await modifica((p) => {
+      Object.assign(p, campi)
+    })
   }
 
-  async function salva() {
-    await db.partite.update(partita.id!, {
-      convocati: Array.from(convocati),
-      titolari: Array.from(titolari),
+  async function aggiornaConfig(campi: Partial<PartitaType['config']>) {
+    await modifica((p) => {
+      p.config = { ...p.config, ...campi }
+    })
+  }
+
+  async function toggleConvocato(id: number) {
+    await modifica((p) => {
+      const conv = new Set(p.convocati)
+      const tit = new Set(p.titolari)
+      if (conv.has(id)) {
+        conv.delete(id)
+        tit.delete(id) // se era titolare non può restarlo
+      } else {
+        if (maxConvocati !== null && conv.size >= maxConvocati) return
+        conv.add(id)
+      }
+      p.convocati = Array.from(conv)
+      p.titolari = Array.from(tit)
+    })
+  }
+
+  async function toggleTitolare(id: number) {
+    await modifica((p) => {
+      if (!p.convocati.includes(id)) return
+      const tit = new Set(p.titolari)
+      if (tit.has(id)) tit.delete(id)
+      else {
+        if (tit.size >= MAX_TITOLARI) return
+        tit.add(id)
+      }
+      p.titolari = Array.from(tit)
     })
   }
 
   async function iniziaPartita() {
-    if (titolari.size !== MAX_TITOLARI) {
-      alert(`Devi selezionare esattamente ${MAX_TITOLARI} titolari.`)
-      return
-    }
-    const now = Date.now()
-    await db.partite.update(partita.id!, {
-      convocati: Array.from(convocati),
-      titolari: Array.from(titolari),
-      inCampo: Array.from(titolari),
-      stato: 'in_corso',
-      cronometro: {
+    const adesso = oraCorrente()
+    await modifica((p) => {
+      // L'orario che avevi messo era una previsione: il via è adesso.
+      p.dataOra = adesso
+      p.inCampo = [...p.titolari]
+      p.stato = 'in_corso'
+      p.cronometro = {
         tempoCorrente: 1,
-        inizioTempoTimestamp: now,
+        inizioTempoTimestamp: adesso,
         secondiAccumulati: 0,
         inPausa: false,
-      },
+      }
     })
     await db.eventi.add({
       partitaId: partita.id!,
@@ -190,11 +217,22 @@ function PreMatch({
       tipo: 'inizio_tempo',
       tempo: 1,
     })
+    setShowInizio(false)
   }
 
   const rosaOrdinata = [...rosa].sort(
     (a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo)
   )
+  const avversarioNome =
+    avversari.find((a) => a.id === partita.avversarioId)?.nome ?? '???'
+  const prontaAlVia = titolari.size === MAX_TITOLARI
+
+  // datetime-local vuole "YYYY-MM-DDTHH:mm" in ora locale
+  const dataInputValue = new Date(
+    partita.dataOra - new Date().getTimezoneOffset() * 60000
+  )
+    .toISOString()
+    .slice(0, 16)
 
   return (
     <div className="max-w-2xl mx-auto p-6 pb-32">
@@ -205,98 +243,292 @@ function PreMatch({
         <h1 className="text-2xl font-bold">vs {avversarioNome}</h1>
         <TagBadge tag={partita.tag} />
       </div>
-      <p className="text-sm text-slate-400 mb-6">Setup pre-partita</p>
+      <p className="text-sm text-slate-400 mb-6">
+        Preparazione · {partita.config.numeroTempi} tempi da{' '}
+        {partita.config.durataTempoMinuti}′ · tempo effettivo{' '}
+        {partita.config.tempoEffettivo ? 'acceso' : 'spento'}
+      </p>
 
-      {/* Contatori */}
-      <div className="flex gap-4 mb-4 text-sm">
-        <div className="bg-slate-800 px-3 py-1.5 rounded-lg">
-          Convocati: <span className="font-bold">{convocati.size}</span>
-          {maxConvocati !== null ? (
-            `/${maxConvocati}`
-          ) : (
-            <span className="text-slate-400"> · amichevole, nessun limite</span>
-          )}
-        </div>
-        <div className="bg-slate-800 px-3 py-1.5 rounded-lg">
-          Titolari: <span className="font-bold">{titolari.size}</span>/{MAX_TITOLARI}
-        </div>
-      </div>
+      {/* ===== 1. Impostazioni ===== */}
+      <section className="bg-slate-800 rounded-xl p-4 mb-6 flex flex-col gap-3">
+        <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">
+          Impostazioni
+        </h2>
 
-      {/* Lista rosa */}
-      <ul className="flex flex-col gap-2 mb-6">
-        {rosaOrdinata.map((g) => {
-          const isConv = convocati.has(g.id!)
-          const isTit = titolari.has(g.id!)
-          return (
-            <li
-              key={g.id}
-              className={`bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3 ${
-                isConv ? '' : 'opacity-50'
-              }`}
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Avversario</label>
+          <select
+            value={partita.avversarioId}
+            onChange={(e) => aggiorna({ avversarioId: Number(e.target.value) })}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+          >
+            {avversari.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">
+            Data e ora prevista
+          </label>
+          <input
+            type="datetime-local"
+            value={dataInputValue}
+            onChange={(e) => {
+              const t = new Date(e.target.value).getTime()
+              if (!Number.isNaN(t)) aggiorna({ dataOra: t })
+            }}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            È solo la previsione per il calendario. Quando premi «Inizia
+            partita» viene sostituita con l'ora vera del fischio d'inizio.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">N° tempi</label>
+            <input
+              type="number"
+              min="1"
+              max="4"
+              value={tempiBozza}
+              onChange={(e) => setTempiBozza(e.target.value)}
+              onBlur={() => {
+                const n = Number(tempiBozza)
+                if (Number.isInteger(n) && n >= 1 && n <= 4) {
+                  aggiornaConfig({ numeroTempi: n })
+                } else {
+                  setTempiBozza(String(partita.config.numeroTempi))
+                }
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Durata tempo (min)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="90"
+              value={durataBozza}
+              onChange={(e) => setDurataBozza(e.target.value)}
+              onBlur={() => {
+                const n = Number(durataBozza)
+                if (Number.isInteger(n) && n >= 1 && n <= 90) {
+                  aggiornaConfig({ durataTempoMinuti: n })
+                } else {
+                  setDurataBozza(String(partita.config.durataTempoMinuti))
+                }
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+            />
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={partita.config.tempoEffettivo}
+            onChange={(e) => aggiornaConfig({ tempoEffettivo: e.target.checked })}
+            className="w-4 h-4"
+          />
+          Tempo effettivo (cronometro fermo quando la palla esce)
+        </label>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-2">Tipo partita</label>
+          <TagSelector
+            value={partita.tag}
+            onChange={(tag) => aggiorna({ tag })}
+          />
+        </div>
+      </section>
+
+      {/* ===== 2. Convocati ===== */}
+      <section className="mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">
+            Convocati
+          </h2>
+          <span className="text-sm">
+            <span className="font-bold">{convocati.size}</span>
+            {maxConvocati !== null ? (
+              <span className="text-slate-400">/{maxConvocati}</span>
+            ) : (
+              <span className="text-slate-500"> · nessun limite in amichevole</span>
+            )}
+          </span>
+        </div>
+
+        {rosa.length === 0 ? (
+          <p className="text-slate-400 italic text-sm">
+            Nessun giocatore in rosa.{' '}
+            <Link
+              to={`/setup-stagione/${stagioneId}`}
+              className="text-emerald-400 underline"
             >
-              <input
-                type="checkbox"
-                checked={isConv}
-                onChange={() => toggleConvocato(g.id!)}
-                className="w-5 h-5"
-              />
-              {g.numero !== undefined && (
-                <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                  {g.numero}
-                </span>
-              )}
-              <div className="flex-1">
-                <div className="font-medium">{nomeCompleto(g)}</div>
-                <div className="text-xs text-slate-400">{ruoloShort(g.ruolo)}</div>
-              </div>
-              {isConv && (
-                <button
-                  onClick={() => toggleTitolare(g.id!)}
-                  className={`px-3 py-1 rounded-lg text-sm font-semibold ${
-                    isTit
-                      ? 'bg-emerald-600 hover:bg-emerald-500'
-                      : 'bg-slate-700 hover:bg-slate-600'
+              Aggiungi giocatori
+            </Link>
+            .
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {rosaOrdinata.map((g) => {
+              const isConv = convocati.has(g.id!)
+              return (
+                <li
+                  key={g.id}
+                  className={`bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3 ${
+                    isConv ? '' : 'opacity-50'
                   }`}
                 >
-                  {isTit ? 'Titolare' : 'Panchina'}
-                </button>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+                  <input
+                    type="checkbox"
+                    checked={isConv}
+                    onChange={() => toggleConvocato(g.id!)}
+                    className="w-5 h-5"
+                  />
+                  {g.numero !== undefined && (
+                    <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                      {g.numero}
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{nomeCompleto(g)}</div>
+                    <div className="text-xs text-slate-400">
+                      {ruoloShort(g.ruolo)}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
 
-      {rosa.length === 0 && (
-        <p className="text-slate-400 italic">
-          Nessun giocatore in rosa.{' '}
-          <Link
-            to={`/setup-stagione/${stagioneId}`}
-            className="text-emerald-400 underline"
-          >
-            Aggiungi giocatori
-          </Link>
-          .
-        </p>
-      )}
+      {/* ===== 3. Titolari ===== */}
+      <section className="mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">
+            Titolari
+          </h2>
+          <span className="text-sm">
+            <span className={`font-bold ${prontaAlVia ? 'text-emerald-400' : ''}`}>
+              {titolari.size}
+            </span>
+            <span className="text-slate-400">/{MAX_TITOLARI}</span>
+          </span>
+        </div>
 
-      {/* Bottoni sticky in fondo */}
+        {convocati.size === 0 ? (
+          <p className="text-slate-500 italic text-sm">
+            Scegli prima i convocati, poi qui decidi chi parte in campo.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {rosaOrdinata
+              .filter((g) => convocati.has(g.id!))
+              .map((g) => {
+                const isTit = titolari.has(g.id!)
+                return (
+                  <li
+                    key={g.id}
+                    className="bg-slate-800 rounded-lg px-4 py-2.5 flex items-center gap-3"
+                  >
+                    {g.numero !== undefined && (
+                      <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                        {g.numero}
+                      </span>
+                    )}
+                    <span className="flex-1 min-w-0">{nomeCorto(g)}</span>
+                    <button
+                      onClick={() => toggleTitolare(g.id!)}
+                      className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                        isTit
+                          ? 'bg-emerald-600 hover:bg-emerald-500'
+                          : 'bg-slate-700 hover:bg-slate-600'
+                      }`}
+                    >
+                      {isTit ? 'Titolare' : 'Panchina'}
+                    </button>
+                  </li>
+                )
+              })}
+          </ul>
+        )}
+      </section>
+
+      {/* ===== 4. Il via ===== */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 p-4">
-        <div className="max-w-2xl mx-auto flex gap-2">
+        <div className="max-w-2xl mx-auto">
+          {!prontaAlVia && (
+            <p className="text-xs text-amber-400/90 mb-2 text-center">
+              Servono esattamente {MAX_TITOLARI} titolari per iniziare (ne hai{' '}
+              {titolari.size}).
+            </p>
+          )}
           <button
-            onClick={salva}
-            className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
-          >
-            Salva
-          </button>
-          <button
-            onClick={iniziaPartita}
-            disabled={titolari.size !== MAX_TITOLARI}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-lg font-semibold"
+            onClick={() => setShowInizio(true)}
+            disabled={!prontaAlVia}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-lg font-bold text-lg"
           >
             Inizia partita →
           </button>
+          <p className="text-xs text-slate-500 mt-2 text-center">
+            Tutto si salva da solo: puoi uscire e tornare quando vuoi.
+          </p>
         </div>
       </div>
+
+      {/* ===== MODAL: conferma del via ===== */}
+      <Modal
+        open={showInizio}
+        onClose={() => setShowInizio(false)}
+        title="Si comincia?"
+      >
+        <p className="text-slate-300 text-sm mb-4">
+          Il cronometro parte adesso e la data della partita viene fissata a
+          questo momento. Da qui in poi registri gol, tiri e palle inattive.
+        </p>
+        <ul className="text-sm text-slate-400 mb-4 flex flex-col gap-1">
+          <li>
+            Avversario: <span className="text-slate-200">{avversarioNome}</span>
+          </li>
+          <li>
+            Formato:{' '}
+            <span className="text-slate-200">
+              {partita.config.numeroTempi} × {partita.config.durataTempoMinuti}′
+            </span>
+            , tempo effettivo{' '}
+            {partita.config.tempoEffettivo ? 'acceso' : 'spento'}
+          </li>
+          <li>
+            Convocati: <span className="text-slate-200">{convocati.size}</span>,
+            di cui {titolari.size} in campo
+          </li>
+        </ul>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => setShowInizio(false)}
+            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+          >
+            Non ancora
+          </button>
+          <button
+            onClick={iniziaPartita}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold"
+          >
+            Via!
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -663,10 +895,11 @@ function Live({
     if (partita.cronometro.inPausa) {
       // riprendi (sia che sia una semplice ripresa, sia che sia inizio di un nuovo tempo)
       const inizioNuovoTempo = partita.cronometro.secondiAccumulati === 0
+      const adesso = oraCorrente()
       await db.partite.update(partita.id!, {
         cronometro: {
           ...partita.cronometro,
-          inizioTempoTimestamp: Date.now(),
+          inizioTempoTimestamp: adesso,
           inPausa: false,
         },
       })

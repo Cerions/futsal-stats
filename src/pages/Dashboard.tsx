@@ -36,9 +36,6 @@ export default function Dashboard() {
   const [dataPartita, setDataPartita] = useState(
     new Date().toISOString().slice(0, 16) // formato per input datetime-local
   )
-  const [numeroTempi, setNumeroTempi] = useState(2)
-  const [durataTempo, setDurataTempo] = useState(20)
-  const [tempoEffettivo, setTempoEffettivo] = useState(false)
   const [tagPartita, setTagPartita] = useState<TagPartita | undefined>(undefined)
 
   async function creaPartita() {
@@ -48,10 +45,12 @@ export default function Dashboard() {
       avversarioId: Number(avversarioId),
       dataOra: new Date(dataPartita).getTime(),
       tag: tagPartita,
+      // Formato di partenza: si aggiusta nella preparazione, dove c'è
+      // anche il resto delle impostazioni.
       config: {
-        numeroTempi,
-        durataTempoMinuti: durataTempo,
-        tempoEffettivo,
+        numeroTempi: 2,
+        durataTempoMinuti: 20,
+        tempoEffettivo: false,
       },
       convocati: [],
       titolari: [],
@@ -290,50 +289,15 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">N° tempi</label>
-              <input
-                type="number"
-                min="1"
-                max="4"
-                value={numeroTempi}
-                onChange={(e) => setNumeroTempi(Number(e.target.value))}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">
-                Durata per tempo (min)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="90"
-                value={durataTempo}
-                onChange={(e) => setDurataTempo(Number(e.target.value))}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-slate-500 -mt-2">
-            Partita totale: {numeroTempi * durataTempo} minuti
-          </p>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={tempoEffettivo}
-              onChange={(e) => setTempoEffettivo(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Tempo effettivo (cronometro si ferma quando la palla esce)
-          </label>
-
           <div>
             <label className="block text-sm text-slate-400 mb-2">Tipo partita</label>
             <TagSelector value={tagPartita} onChange={setTagPartita} />
           </div>
+
+          <p className="text-xs text-slate-500">
+            Numero di tempi, durata e tempo effettivo si scelgono nella
+            preparazione, insieme a convocati e titolari.
+          </p>
 
           <div className="flex justify-end gap-2 mt-2">
             <button
