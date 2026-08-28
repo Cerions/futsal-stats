@@ -8,6 +8,7 @@ import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
 import { nomeSquadra } from '../utils/stagione'
 import TagBadge from '../components/TagBadge'
 import TagSelector from '../components/TagSelector'
+import StatoCloud from '../components/StatoCloud'
 import type { TagPartita } from '../db/schema'
 
 export default function Dashboard() {
@@ -107,6 +108,9 @@ export default function Dashboard() {
           </Link>
           <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
           <p className="text-sm text-slate-400">{stagione.nome}</p>
+          <div className="mt-2">
+            <StatoCloud stagione={stagione} />
+          </div>
         </div>
         <div className="flex gap-2">
           <Link

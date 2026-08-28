@@ -2,6 +2,7 @@ import { db } from '../db/database'
 import { esportaStagione, type ExportData } from '../db/export'
 import { importaStagione, sostituisciStagione, validaImport } from '../db/import'
 import { client, nomeDispositivo } from './supabase'
+import { improntaDati } from './impronta'
 
 /**
  * Sincronizzazione a livello di stagione intera.
@@ -95,6 +96,10 @@ export async function caricaStagione(
         cloudId: riga.id,
         cloudVersione: riga.versione,
         cloudSyncIl: Date.now(),
+        cloudImpronta: improntaDati(dati),
+        cloudConflitto: false,
+        // le stagioni appena collegate si tengono in pari da sole
+        cloudAuto: true,
       })
       return { esito: 'ok', versione: riga.versione }
     }
@@ -140,6 +145,7 @@ export async function caricaStagione(
           esito: 'errore',
           messaggio: 'La stagione non esiste più sul cloud.',
         }
+      await db.stagioni.update(stagioneId, { cloudConflitto: true })
       return {
         esito: 'conflitto',
         versioneCloud: riga.versione,
@@ -150,6 +156,10 @@ export async function caricaStagione(
     await db.stagioni.update(stagioneId, {
       cloudVersione: righe[0].versione,
       cloudSyncIl: Date.now(),
+      // L'impronta è quella dei dati appena caricati: da qui in poi una
+      // differenza significa modifiche locali non ancora sul cloud.
+      cloudImpronta: improntaDati(dati),
+      cloudConflitto: false,
     })
     return { esito: 'ok', versione: righe[0].versione }
   } catch (e) {
@@ -198,6 +208,7 @@ export async function scaricaStagione(
       if (opzioni.soloLettura !== undefined) {
         await db.stagioni.update(gia.id, { soloLettura: opzioni.soloLettura })
       }
+      await segnaAllineata(gia.id)
       return { esito: 'ok', stagioneId: gia.id }
     }
 
@@ -205,11 +216,43 @@ export async function scaricaStagione(
     await db.stagioni.update(nuovaId, {
       ...campiCloud,
       soloLettura: opzioni.soloLettura ?? false,
+      cloudAuto: true,
     })
+    await segnaAllineata(nuovaId)
     return { esito: 'ok', stagioneId: nuovaId }
   } catch (e) {
     return { esito: 'errore', messaggio: messaggioErrore(e) }
   }
+}
+
+/**
+ * Registra che i dati locali coincidono con quelli sul cloud.
+ * L'impronta va ricalcolata dall'export LOCALE: importando, gli id vengono
+ * rimappati, quindi il JSON è diverso da quello ricevuto pur essendo gli
+ * stessi dati. Usare quello ricevuto farebbe ripartire subito un caricamento.
+ */
+async function segnaAllineata(stagioneId: number): Promise<void> {
+  const locale = await esportaStagione(stagioneId)
+  await db.stagioni.update(stagioneId, {
+    cloudImpronta: improntaDati(locale),
+    cloudConflitto: false,
+  })
+}
+
+/** Legge solo la versione corrente sul cloud, senza scaricare i dati. */
+export async function versioneCloud(cloudId: string): Promise<number | null> {
+  const { data, error } = await client()
+    .from(TABELLA)
+    .select('versione')
+    .eq('id', cloudId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as { versione: number } | null)?.versione ?? null
+}
+
+/** Accende o spegne la sincronizzazione automatica di una stagione. */
+export async function impostaAuto(stagioneId: number, attiva: boolean) {
+  await db.stagioni.update(stagioneId, { cloudAuto: attiva })
 }
 
 /** Stacca una stagione locale dal cloud, lasciando i dati dove sono. */
@@ -219,6 +262,9 @@ export async function scollegaStagione(stagioneId: number): Promise<void> {
     delete s.cloudVersione
     delete s.cloudSyncIl
     delete s.soloLettura
+    delete s.cloudImpronta
+    delete s.cloudAuto
+    delete s.cloudConflitto
   })
 }
 

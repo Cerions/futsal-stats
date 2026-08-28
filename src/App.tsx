@@ -7,6 +7,7 @@ import UpdatePrompt from './components/UpdatePrompt'
 import ModificaPartita from './pages/ModificaPartita'
 import StatisticheStagione from './pages/StatisticheStagione'
 import Cloud from './pages/Cloud'
+import SincronizzazioneAuto from './cloud/auto'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
           <Route path="/cloud" element={<Cloud />} />
         </Routes>
+        <SincronizzazioneAuto />
         <UpdatePrompt />
       </div>
     </BrowserRouter>

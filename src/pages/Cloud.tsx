@@ -11,6 +11,7 @@ import {
   caricaStagione,
   elencoCloud,
   eliminaDalCloud,
+  impostaAuto,
   impostaCondivisione,
   scaricaStagione,
   scollegaStagione,
@@ -268,6 +269,29 @@ export default function Cloud() {
                     </div>
                   </div>
                 </div>
+
+                {s.cloudId && (
+                  <label className="flex items-center gap-2 mt-2 text-xs text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={s.cloudAuto !== false}
+                      onChange={(e) => impostaAuto(s.id!, e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    Sincronizza da sola: carica le modifiche e scarica quelle
+                    fatte sugli altri dispositivi, senza premere niente. In pausa
+                    durante le partite.
+                  </label>
+                )}
+
+                {s.cloudConflitto && (
+                  <p className="mt-2 text-xs bg-amber-900/30 border border-amber-800/60 text-amber-200 rounded-lg px-3 py-2">
+                    La stagione è cambiata sia qui sia sul cloud, quindi la
+                    sincronizzazione automatica si è fermata per non buttare via
+                    niente. Scegli tu: <strong>Carica</strong> per tenere questa
+                    versione, <strong>Scarica</strong> per tenere quella del cloud.
+                  </p>
+                )}
 
                 <div className="flex gap-2 mt-3 flex-wrap">
                   <button

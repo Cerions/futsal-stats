@@ -1,4 +1,5 @@
 import { db } from './database'
+import { CAMPI_CLOUD_LOCALI } from './schema'
 import type {
   Stagione,
   Giocatore,
@@ -60,20 +61,12 @@ export async function esportaStagione(stagioneId: number): Promise<ExportData> {
       : []
 
   // Fuori l'id e i campi di sincronizzazione: sono locali al dispositivo e
-  // non devono viaggiare né nel backup né sul cloud.
-  const {
-    id: _id,
-    cloudId: _cloudId,
-    cloudVersione: _cloudVersione,
-    cloudSyncIl: _cloudSyncIl,
-    soloLettura: _soloLettura,
-    ...stagioneSenzaId
-  } = stagione
+  // non devono viaggiare né nel backup né sul cloud. Anche l'impronta va tolta,
+  // altrimenti scriverla cambierebbe i dati da cui è calcolata.
+  const { id: _id, ...restoStagione } = stagione
   void _id
-  void _cloudId
-  void _cloudVersione
-  void _cloudSyncIl
-  void _soloLettura
+  const stagioneSenzaId = { ...restoStagione }
+  for (const campo of CAMPI_CLOUD_LOCALI) delete stagioneSenzaId[campo]
 
   return {
     formato: 'futsal-stats-export',

@@ -13,7 +13,33 @@ export interface Stagione {
   cloudSyncIl?: number
   /** true se la stagione arriva da una condivisione: si può solo leggere. */
   soloLettura?: boolean
+  /**
+   * Impronta dei dati all'ultima sincronizzazione riuscita. Se l'impronta
+   * calcolata adesso è diversa, ci sono modifiche locali ancora da caricare.
+   */
+  cloudImpronta?: string
+  /** Sincronizzazione automatica: default acceso per le stagioni collegate. */
+  cloudAuto?: boolean
+  /**
+   * La stagione è cambiata sia qui sia sul cloud: la sincronizzazione
+   * automatica si ferma finché non scegli quale versione tenere.
+   */
+  cloudConflitto?: boolean
 }
+
+/**
+ * I campi di `Stagione` che descrivono lo stato di sincronizzazione di QUESTO
+ * dispositivo. Non viaggiano né nel backup né sul cloud: sono locali.
+ */
+export const CAMPI_CLOUD_LOCALI = [
+  'cloudId',
+  'cloudVersione',
+  'cloudSyncIl',
+  'soloLettura',
+  'cloudImpronta',
+  'cloudAuto',
+  'cloudConflitto',
+] as const satisfies readonly (keyof Stagione)[]
 export interface SquadraAvversaria {
   id?: number
   stagioneId: number
