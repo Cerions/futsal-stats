@@ -6,6 +6,7 @@ import Partita from './pages/Partita'
 import UpdatePrompt from './components/UpdatePrompt'
 import ModificaPartita from './pages/ModificaPartita'
 import StatisticheStagione from './pages/StatisticheStagione'
+import Cloud from './pages/Cloud'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/stagione/:id/statistiche" element={<StatisticheStagione />} />
           <Route path="/partita/:id" element={<Partita />} />
           <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
+          <Route path="/cloud" element={<Cloud />} />
         </Routes>
         <UpdatePrompt />
       </div>

@@ -13,6 +13,12 @@ dist-ssr
 dev-dist
 *.local
 
+# Variabili d'ambiente: le chiavi Supabase stanno qui in locale
+# e in Environment variables su Netlify. .env.example resta versionato.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

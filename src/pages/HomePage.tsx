@@ -8,6 +8,7 @@ import Modal from '../components/Modal'
 import type { Stagione } from '../db/schema'
 import { esportaStagione, nomeFileExport, scaricaJSON } from '../db/export'
 import { importaStagione, validaImport, leggiFileJSON } from '../db/import'
+import { cloudConfigurato } from '../cloud/supabase'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -119,6 +120,15 @@ export default function HomePage() {
       >
         Carica stagione
       </button>
+
+      {cloudConfigurato && (
+        <button
+          onClick={() => navigate('/cloud')}
+          className="w-full max-w-xs bg-slate-700 hover:bg-slate-600 py-4 rounded-lg font-semibold"
+        >
+          ☁️ Sincronizzazione
+        </button>
+      )}
 
       {/* Modal: crea nuova stagione */}
       <Modal

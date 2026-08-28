@@ -5,6 +5,14 @@ export interface Stagione {
   nome: string
   nomeSquadra: string
   dataCreazione: number
+  /** Id della riga su Supabase, se la stagione è collegata al cloud. */
+  cloudId?: string
+  /** Versione del cloud che questo dispositivo ha già visto (lock ottimistico). */
+  cloudVersione?: number
+  /** Quando è avvenuta l'ultima sincronizzazione riuscita. */
+  cloudSyncIl?: number
+  /** true se la stagione arriva da una condivisione: si può solo leggere. */
+  soloLettura?: boolean
 }
 export interface SquadraAvversaria {
   id?: number

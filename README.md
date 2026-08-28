@@ -31,8 +31,8 @@ App PWA per registrare statistiche di partite di calcio a 5.
 - [x] Schemi per tutte le palle inattive, definiti nel setup e scelti in partita, con resa per schema
 - [x] PWA installabile su Android
 - [x] Deploy automatico su Netlify
+- [x] Sincronizzazione tra dispositivi via Supabase, con condivisione in sola lettura
 - [ ] xG subiti (xGA): zone anche sui tiri avversari
-- [ ] Eventuale cloud sync via Supabase
 
 ## xG semplificato
 
@@ -113,6 +113,49 @@ Dove si legge:
 
 Tutto quanto sopra si aggiunge e si corregge anche a partita finita, da
 *Modifica partita*: origine, punto di battuta, zona, schema, e le battute stesse.
+
+## Sincronizzazione tra dispositivi
+
+I dati restano sul dispositivo: Supabase è solo il posto dove appoggiarli per
+riprenderli altrove. Si sincronizza **una stagione intera alla volta**, non
+record per record.
+
+Ogni stagione sul cloud ha un contatore `versione`. Chi carica dichiara quale
+versione sta sovrascrivendo: se nel frattempo ha caricato un altro dispositivo
+l'update non tocca niente e l'app mostra il conflitto, con la scelta esplicita
+tra scaricare la versione del cloud o sovrascriverla. Non si perde niente di
+nascosto.
+
+Il flusso normale è: registri la partita sul telefono, premi **⬆ Carica**, e
+dal PC premi **⬇ Scarica**. Scaricando, il contenuto della stagione locale
+viene sostituito in blocco dentro una transazione, ma l'id locale resta lo
+stesso, quindi i link alle partite continuano a funzionare.
+
+Una stagione si può condividere in **sola lettura** con altre email: chi la
+riceve la vede nella sua app ma non può ricaricarla, e le policy sul database
+glielo impediscono comunque.
+
+### Configurazione
+
+1. Crea un progetto su Supabase ed esegui `supabase/schema.sql` nel SQL Editor:
+   crea la tabella `stagioni_cloud` e le policy RLS.
+2. Metti in un file `.env` (non versionato) le due variabili di `.env.example`:
+
+   ```
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=...
+   ```
+
+3. Le stesse due variabili vanno anche su Netlify, in *Site configuration →
+   Environment variables*, altrimenti in produzione la sincronizzazione resta
+   spenta.
+
+La chiave anon è pubblica per definizione e finisce nel bundle: a proteggere i
+dati sono le policy RLS, non la segretezza della chiave. La `service_role` non
+va invece mai messa nel front-end.
+
+Senza le variabili l'app funziona esattamente come prima, tutta offline: il
+bottone di sincronizzazione semplicemente non compare.
 
 ## Formato di export
 

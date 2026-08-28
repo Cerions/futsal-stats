@@ -125,6 +125,14 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {stagione.soloLettura && (
+        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-4">
+          Stagione condivisa in <strong>sola lettura</strong>: le modifiche fatte
+          qui non tornano a chi te l'ha condivisa e vengono sovrascritte al
+          prossimo scaricamento.
+        </p>
+      )}
+
       {/* Bottone nuova partita */}
       <button
         onClick={() => setShowNuovaPartita(true)}

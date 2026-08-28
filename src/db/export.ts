@@ -59,9 +59,21 @@ export async function esportaStagione(stagioneId: number): Promise<ExportData> {
       ? await db.eventi.where('partitaId').anyOf(partiteIds).toArray()
       : []
 
-  // togliamo l'id dalla stagione (verrà rigenerato in import)
-  const { id: _id, ...stagioneSenzaId } = stagione
+  // Fuori l'id e i campi di sincronizzazione: sono locali al dispositivo e
+  // non devono viaggiare né nel backup né sul cloud.
+  const {
+    id: _id,
+    cloudId: _cloudId,
+    cloudVersione: _cloudVersione,
+    cloudSyncIl: _cloudSyncIl,
+    soloLettura: _soloLettura,
+    ...stagioneSenzaId
+  } = stagione
   void _id
+  void _cloudId
+  void _cloudVersione
+  void _cloudSyncIl
+  void _soloLettura
 
   return {
     formato: 'futsal-stats-export',

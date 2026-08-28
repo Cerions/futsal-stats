@@ -21,108 +21,164 @@ export function validaImport(data: unknown): data is ExportData {
   )
 }
 
-/**
- * Importa una stagione da un export. Tutti gli ID vengono rigenerati.
- * Ritorna l'id della nuova stagione creata.
- */
-export async function importaStagione(data: ExportData): Promise<number> {
+/** Le tabelle toccate da import e sostituzione. */
+const TABELLE = [
+  db.stagioni,
+  db.giocatori,
+  db.avversari,
+  db.partite,
+  db.eventi,
+  db.schemi,
+]
+
+function controllaVersione(data: ExportData) {
   if (data.versione > VERSIONE_EXPORT) {
     throw new Error(
       `Versione export non supportata: ${data.versione}. Aggiorna l'app.`
     )
   }
+}
 
-  return await db.transaction(
-    'rw',
-    [db.stagioni, db.giocatori, db.avversari, db.partite, db.eventi, db.schemi],
-    async () => {
-      // 1. Crea la stagione e prendi il nuovo id
-      const nuovaStagioneId = await db.stagioni.add({
-        nome: data.stagione.nome,
-        nomeSquadra: data.stagione.nomeSquadra,
-        dataCreazione: data.stagione.dataCreazione,
-      })
+/**
+ * Importa una stagione da un export, creandone una nuova.
+ * Tutti gli ID vengono rigenerati. Ritorna l'id della nuova stagione.
+ */
+export async function importaStagione(data: ExportData): Promise<number> {
+  controllaVersione(data)
+  return await db.transaction('rw', TABELLE, async () => {
+    const nuovaStagioneId = await db.stagioni.add({
+      nome: data.stagione.nome,
+      nomeSquadra: data.stagione.nomeSquadra,
+      dataCreazione: data.stagione.dataCreazione,
+    })
+    await popolaStagione(data, nuovaStagioneId)
+    return nuovaStagioneId
+  })
+}
 
-      // 2. Mappa giocatori: vecchio id → nuovo id
-      const mappaGiocatori = new Map<number, number>()
-      for (const g of data.giocatori) {
-        const vecchioId = g.id!
-        const nuovoId = await db.giocatori.add({
-          stagioneId: nuovaStagioneId,
-          nome: g.nome,
-          cognome: g.cognome,
-          numero: g.numero,
-          ruolo: g.ruolo,
-        })
-        mappaGiocatori.set(vecchioId, nuovoId)
-      }
+/**
+ * Svuota il contenuto di una stagione (giocatori, avversari, schemi, partite,
+ * eventi) lasciando in piedi la riga della stagione con il suo id locale.
+ */
+async function svuotaStagione(stagioneId: number) {
+  const partiteIds = await db.partite
+    .where('stagioneId')
+    .equals(stagioneId)
+    .primaryKeys()
+  if (partiteIds.length > 0) {
+    await db.eventi.where('partitaId').anyOf(partiteIds).delete()
+    await db.partite.bulkDelete(partiteIds)
+  }
+  await db.giocatori.where('stagioneId').equals(stagioneId).delete()
+  await db.avversari.where('stagioneId').equals(stagioneId).delete()
+  await db.schemi.where('stagioneId').equals(stagioneId).delete()
+}
 
-      // 3. Mappa avversari
-      const mappaAvversari = new Map<number, number>()
-      for (const a of data.avversari) {
-        const vecchioId = a.id!
-        const nuovoId = await db.avversari.add({
-          stagioneId: nuovaStagioneId,
-          nome: a.nome,
-        })
-        mappaAvversari.set(vecchioId, nuovoId)
-      }
+/**
+ * Sostituisce in blocco il contenuto di una stagione locale con quello di un
+ * export. Serve alla sincronizzazione: la stagione locale mantiene il suo id
+ * (e quindi i link e i preferiti restano validi), ma il contenuto diventa
+ * quello scaricato. Tutto dentro una transazione: o cambia tutto o niente.
+ */
+export async function sostituisciStagione(
+  data: ExportData,
+  stagioneId: number,
+  campiCloud: { cloudId: string; cloudVersione: number; cloudSyncIl: number }
+): Promise<void> {
+  controllaVersione(data)
+  await db.transaction('rw', TABELLE, async () => {
+    await svuotaStagione(stagioneId)
+    await db.stagioni.update(stagioneId, {
+      nome: data.stagione.nome,
+      nomeSquadra: data.stagione.nomeSquadra,
+      dataCreazione: data.stagione.dataCreazione,
+      ...campiCloud,
+    })
+    await popolaStagione(data, stagioneId)
+  })
+}
 
-      // 3-bis. Mappa schemi (assenti negli export v1 e v2).
-      // Negli export v3 gli schemi erano solo di calcio d'angolo e non
-      // avevano il campo tipo: li normalizziamo qui.
-      const mappaSchemi = new Map<number, number>()
-      for (const s of data.schemi ?? []) {
-        const vecchioId = s.id!
-        const nuovoId = await db.schemi.add({
-          stagioneId: nuovaStagioneId,
-          tipo: s.tipo ?? 'corner',
-          nome: s.nome,
-          note: s.note,
-        })
-        mappaSchemi.set(vecchioId, nuovoId)
-      }
+/**
+ * Scrive dentro una stagione già esistente e vuota tutto il contenuto di un
+ * export, rigenerando gli id e rimappando ogni riferimento.
+ */
+async function popolaStagione(data: ExportData, nuovaStagioneId: number) {
+  // 2. Mappa giocatori: vecchio id → nuovo id
+  const mappaGiocatori = new Map<number, number>()
+  for (const g of data.giocatori) {
+    const vecchioId = g.id!
+    const nuovoId = await db.giocatori.add({
+      stagioneId: nuovaStagioneId,
+      nome: g.nome,
+      cognome: g.cognome,
+      numero: g.numero,
+      ruolo: g.ruolo,
+    })
+    mappaGiocatori.set(vecchioId, nuovoId)
+  }
 
-      // 4. Mappa partite (riscrivendo avversarioId, convocati, titolari, inCampo)
-      const mappaPartite = new Map<number, number>()
-      for (const p of data.partite) {
-        const vecchioId = p.id!
-        const nuovaPartita: Omit<Partita, 'id'> = {
-          stagioneId: nuovaStagioneId,
-          avversarioId: mappaAvversari.get(p.avversarioId) ?? 0,
-          dataOra: p.dataOra,
-          tag: p.tag,
-          config: p.config,
-          convocati: p.convocati.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
-          titolari: p.titolari.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
-          inCampo: p.inCampo.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
-          stato: p.stato,
-          cronometro: p.cronometro,
-        }
-        const nuovoId = await db.partite.add(nuovaPartita)
-        mappaPartite.set(vecchioId, nuovoId)
-      }
+  // 3. Mappa avversari
+  const mappaAvversari = new Map<number, number>()
+  for (const a of data.avversari) {
+    const vecchioId = a.id!
+    const nuovoId = await db.avversari.add({
+      stagioneId: nuovaStagioneId,
+      nome: a.nome,
+    })
+    mappaAvversari.set(vecchioId, nuovoId)
+  }
 
-      // 5. Riscrivi gli eventi
-      for (const e of data.eventi) {
-        const nuovaPartitaId = mappaPartite.get(e.partitaId)
-        if (nuovaPartitaId === undefined) continue // evento orfano, salta
+  // 3-bis. Mappa schemi (assenti negli export v1 e v2).
+  // Negli export v3 gli schemi erano solo di calcio d'angolo e non
+  // avevano il campo tipo: li normalizziamo qui.
+  const mappaSchemi = new Map<number, number>()
+  for (const s of data.schemi ?? []) {
+    const vecchioId = s.id!
+    const nuovoId = await db.schemi.add({
+      stagioneId: nuovaStagioneId,
+      tipo: s.tipo ?? 'corner',
+      nome: s.nome,
+      note: s.note,
+    })
+    mappaSchemi.set(vecchioId, nuovoId)
+  }
 
-        // riscriviamo i riferimenti a giocatori e schemi dentro l'evento
-        const eventoRimappato = rimappaEvento(
-          normalizzaEvento(e),
-          nuovaPartitaId,
-          mappaGiocatori,
-          mappaSchemi
-        )
-        if (eventoRimappato) {
-          await db.eventi.add(eventoRimappato)
-        }
-      }
-
-      return nuovaStagioneId
+  // 4. Mappa partite (riscrivendo avversarioId, convocati, titolari, inCampo)
+  const mappaPartite = new Map<number, number>()
+  for (const p of data.partite) {
+    const vecchioId = p.id!
+    const nuovaPartita: Omit<Partita, 'id'> = {
+      stagioneId: nuovaStagioneId,
+      avversarioId: mappaAvversari.get(p.avversarioId) ?? 0,
+      dataOra: p.dataOra,
+      tag: p.tag,
+      config: p.config,
+      convocati: p.convocati.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
+      titolari: p.titolari.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
+      inCampo: p.inCampo.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
+      stato: p.stato,
+      cronometro: p.cronometro,
     }
-  )
+    const nuovoId = await db.partite.add(nuovaPartita)
+    mappaPartite.set(vecchioId, nuovoId)
+  }
+
+  // 5. Riscrivi gli eventi
+  for (const e of data.eventi) {
+    const nuovaPartitaId = mappaPartite.get(e.partitaId)
+    if (nuovaPartitaId === undefined) continue // evento orfano, salta
+
+    // riscriviamo i riferimenti a giocatori e schemi dentro l'evento
+    const eventoRimappato = rimappaEvento(
+      normalizzaEvento(e),
+      nuovaPartitaId,
+      mappaGiocatori,
+      mappaSchemi
+    )
+    if (eventoRimappato) {
+      await db.eventi.add(eventoRimappato)
+    }
+  }
 }
 
 /**
