@@ -57,7 +57,13 @@ export function descriviEvento(
         : `⚽ Gol di ${nome(e.giocatoreId)}${coda}`
     }
     case 'gol_subito':
-      return `⚽ Gol subito`
+      return e.zona !== undefined
+        ? `⚽ Gol subito · ${zonaLabelCorta(e.zona)}`
+        : `⚽ Gol subito`
+    case 'tiro_subito':
+      return `🥅 Tiro loro — ${esitoLabel(e.esito).toLowerCase()} · ${zonaLabelCorta(
+        e.zona
+      )}`
     case 'autogol_pro':
       return `⚽ Gol (autogol avversario)`
     case 'autogol_contro':

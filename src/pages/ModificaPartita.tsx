@@ -32,6 +32,7 @@ type TipoEventoNuovo =
   | 'autogol_pro'
   | 'autogol_contro'
   | 'tiro'
+  | 'tiro_subito'
   | 'inattiva'
 
 /** Eventi che si possono correggere a posteriori dalla lista. */
@@ -40,6 +41,8 @@ function eventoModificabile(e: Evento): boolean {
     e.tipo === 'gol_fatto' ||
     e.tipo === 'autogol_contro' ||
     e.tipo === 'tiro' ||
+    e.tipo === 'gol_subito' ||
+    e.tipo === 'tiro_subito' ||
     e.tipo === 'inattiva'
   )
 }
@@ -272,8 +275,22 @@ export default function ModificaPartita() {
         })
         break
       case 'gol_subito':
-        await db.eventi.add({ ...base, tipo: 'gol_subito' })
+        await db.eventi.add({
+          ...base,
+          tipo: 'gol_subito',
+          zona: zonaNuova === '' ? undefined : zonaNuova,
+        })
         break
+      case 'tiro_subito': {
+        if (zonaNuova === '') return
+        await db.eventi.add({
+          ...base,
+          tipo: 'tiro_subito',
+          zona: zonaNuova,
+          esito: esitoNuovo,
+        })
+        break
+      }
       case 'autogol_pro':
         await db.eventi.add({ ...base, tipo: 'autogol_pro' })
         break
@@ -312,6 +329,16 @@ export default function ModificaPartita() {
         break
       case 'autogol_contro':
         setEditMarcatore(e.giocatoreId)
+        break
+      case 'gol_subito':
+        // niente giocatore nostro: sblocchiamo il salvataggio
+        setEditMarcatore(0)
+        setEditZona(e.zona ?? '')
+        break
+      case 'tiro_subito':
+        setEditMarcatore(0)
+        setEditZona(e.zona)
+        setEditEsito(e.esito)
         break
       case 'tiro':
         setEditMarcatore(e.giocatoreId)
@@ -369,6 +396,16 @@ export default function ModificaPartita() {
         zona: editZona,
         esito: editEsito,
       } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'gol_subito') {
+      await db.eventi.update(eventoInModifica.id!, {
+        zona: editZona === '' ? undefined : editZona,
+      } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'tiro_subito') {
+      if (editZona === '') return
+      await db.eventi.update(eventoInModifica.id!, {
+        zona: editZona,
+        esito: editEsito,
+      } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'inattiva') {
       await db.eventi.update(eventoInModifica.id!, {
         situazione: editSituazione,
@@ -384,19 +421,42 @@ export default function ModificaPartita() {
     { value: 'tiro', label: 'Tiro (non gol)' },
     { value: 'inattiva', label: 'Palla inattiva battuta' },
     { value: 'gol_subito', label: 'Gol subito' },
+    { value: 'tiro_subito', label: 'Tiro loro (non gol)' },
     { value: 'autogol_pro', label: 'Autogol avversario (gol per noi)' },
     { value: 'autogol_contro', label: 'Autogol nostro (gol per loro)' },
   ]
+
+  // Che campi mostra il modale di modifica, in base al tipo di evento aperto.
+  const tipoInModifica = eventoInModifica?.tipo
+  const editHaGiocatore =
+    tipoInModifica === 'gol_fatto' ||
+    tipoInModifica === 'tiro' ||
+    tipoInModifica === 'autogol_contro'
+  const editHaZona =
+    tipoInModifica === 'gol_fatto' ||
+    tipoInModifica === 'tiro' ||
+    tipoInModifica === 'gol_subito' ||
+    tipoInModifica === 'tiro_subito'
+  const editZonaOpzionale =
+    tipoInModifica === 'gol_fatto' || tipoInModifica === 'gol_subito'
+  const editHaEsito = tipoInModifica === 'tiro' || tipoInModifica === 'tiro_subito'
+  const editHaOrigine = tipoInModifica === 'gol_fatto' || tipoInModifica === 'tiro'
 
   const richiedeGiocatore =
     tipoNuovo === 'gol_fatto' ||
     tipoNuovo === 'autogol_contro' ||
     tipoNuovo === 'tiro'
   const richiedeAssist = tipoNuovo === 'gol_fatto'
-  const mostraZona = tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro'
-  const zonaObbligatoria = tipoNuovo === 'tiro'
+  const mostraZona =
+    tipoNuovo === 'gol_fatto' ||
+    tipoNuovo === 'tiro' ||
+    tipoNuovo === 'gol_subito' ||
+    tipoNuovo === 'tiro_subito'
+  const zonaObbligatoria = tipoNuovo === 'tiro' || tipoNuovo === 'tiro_subito'
+  // Origine e schema descrivono come costruiamo NOI l'azione: delle conclusioni
+  // subite registriamo solo da dove sono partite e com'è finita.
   // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
-  const mostraOrigine = mostraZona
+  const mostraOrigine = tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro'
   const mostraSchemaNuovo =
     tipoNuovo === 'inattiva' || (mostraOrigine && origineRichiedeSchema(origineNuova))
   /** Il tipo di palla inattiva a cui appartengono gli schemi da mostrare. */
@@ -608,7 +668,10 @@ export default function ModificaPartita() {
           {mostraZona && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
-                Zona di tiro {zonaObbligatoria ? '' : '(opzionale)'}
+                {tipoNuovo === 'gol_subito' || tipoNuovo === 'tiro_subito'
+                  ? 'Zona da cui hanno concluso'
+                  : 'Zona di tiro'}{' '}
+                {zonaObbligatoria ? '' : '(opzionale)'}
               </label>
               <SelectZona
                 value={zonaNuova}
@@ -689,7 +752,7 @@ export default function ModificaPartita() {
             </div>
           )}
 
-          {tipoNuovo === 'tiro' && (
+          {(tipoNuovo === 'tiro' || tipoNuovo === 'tiro_subito') && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Esito</label>
               <select
@@ -727,7 +790,7 @@ export default function ModificaPartita() {
         </div>
       </Modal>
 
-      {/* ===== MODAL: modifica gol/autogol esistente ===== */}
+      {/* ===== MODAL: modifica evento esistente ===== */}
       <Modal
         open={eventoInModifica !== null}
         onClose={() => setEventoInModifica(null)}
@@ -736,13 +799,17 @@ export default function ModificaPartita() {
             ? 'Modifica gol'
             : eventoInModifica?.tipo === 'tiro'
             ? 'Modifica tiro'
+            : eventoInModifica?.tipo === 'gol_subito'
+            ? 'Modifica gol subito'
+            : eventoInModifica?.tipo === 'tiro_subito'
+            ? 'Modifica tiro loro'
             : eventoInModifica?.tipo === 'inattiva'
             ? 'Modifica palla inattiva'
             : 'Modifica autogol'
         }
       >
         <div className="flex flex-col gap-3">
-          {eventoInModifica?.tipo !== 'inattiva' && (
+          {editHaGiocatore && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Giocatore</label>
               <select
@@ -786,22 +853,23 @@ export default function ModificaPartita() {
             </div>
           )}
 
-          {(eventoInModifica?.tipo === 'gol_fatto' ||
-            eventoInModifica?.tipo === 'tiro') && (
+          {editHaZona && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
-                Zona di tiro{' '}
-                {eventoInModifica?.tipo === 'gol_fatto' ? '(opzionale)' : ''}
+                {tipoInModifica === 'gol_subito' || tipoInModifica === 'tiro_subito'
+                  ? 'Zona da cui hanno concluso'
+                  : 'Zona di tiro'}{' '}
+                {editZonaOpzionale ? '(opzionale)' : ''}
               </label>
               <SelectZona
                 value={editZona}
                 onChange={setEditZona}
-                opzionale={eventoInModifica?.tipo === 'gol_fatto'}
+                opzionale={editZonaOpzionale}
               />
             </div>
           )}
 
-          {eventoInModifica?.tipo === 'tiro' && (
+          {editHaEsito && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Esito</label>
               <select
@@ -818,8 +886,7 @@ export default function ModificaPartita() {
             </div>
           )}
 
-          {(eventoInModifica?.tipo === 'gol_fatto' ||
-            eventoInModifica?.tipo === 'tiro') && (
+          {editHaOrigine && (
             <>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">
@@ -855,9 +922,7 @@ export default function ModificaPartita() {
           )}
 
           {(eventoInModifica?.tipo === 'inattiva' ||
-            ((eventoInModifica?.tipo === 'gol_fatto' ||
-              eventoInModifica?.tipo === 'tiro') &&
-              origineRichiedeSchema(editOrigine))) && (
+            (editHaOrigine && origineRichiedeSchema(editOrigine))) && (
             <div className="flex flex-col gap-3">
               {eventoInModifica?.tipo === 'inattiva' && (
                 <div>
@@ -908,8 +973,8 @@ export default function ModificaPartita() {
             <button
               onClick={salvaModificaEvento}
               disabled={
-                editMarcatore === '' ||
-                (eventoInModifica?.tipo === 'tiro' && editZona === '')
+                (editHaGiocatore && editMarcatore === '') ||
+                (editHaEsito && editZona === '')
               }
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >

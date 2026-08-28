@@ -10,6 +10,7 @@ import {
   formatCronometro,
   minutoCorrente,
 } from '../utils/cronometro'
+import type { Fronte } from '../db/zone'
 import type {
   Evento,
   EsitoTiro,
@@ -27,7 +28,11 @@ import TagBadge from '../components/TagBadge'
 import TagSelector from '../components/TagSelector'
 import { descriviEvento } from '../utils/evento'
 import CampoTiri from '../components/CampoTiri'
-import { conteggiPerZona, contaInattive } from '../utils/statistiche'
+import {
+  conteggiPerZona,
+  contaInattive,
+  contaTiriConZona,
+} from '../utils/statistiche'
 import {
   ESITI_TIRO,
   ORIGINI_TIRO,
@@ -611,6 +616,12 @@ function Live({
   // true quando il flusso arriva dal bottone Corner: origine e schema già decisi
   const [origineFissata, setOrigineFissata] = useState(false)
 
+  // ----- STATE: conclusione subita -----
+  // Stesso principio del flusso nostro, ma senza giocatore: degli avversari
+  // ci interessa solo da dove hanno concluso e com'è finita.
+  const [passoSubito, setPassoSubito] = useState<'zona' | 'esito'>('zona')
+  const [subitoZona, setSubitoZona] = useState<ZonaTiro | null>(null)
+
   // ----- STATE: palla inattiva battuta -----
   const [showInattiva, setShowInattiva] = useState(false)
   const [passoInattiva, setPassoInattiva] = useState<'tipo' | 'schema' | 'esito'>('tipo')
@@ -618,6 +629,7 @@ function Live({
   const [inattivaSchemaId, setInattivaSchemaId] = useState<number | null>(null)
 
   const [showMappa, setShowMappa] = useState(false)
+  const [fronteMappa, setFronteMappa] = useState<Fronte>('nostro')
 
   // ----- Tiri e xG della partita -----
   const conteggiZone = conteggiPerZona(eventi)
@@ -631,22 +643,68 @@ function Live({
   const inattiveBattute = contaInattive(eventi)
   /** Gli schemi disponibili per una certa situazione. */
   const schemiPerTipo = (t: TipoInattiva) => schemi.filter((s) => s.tipo === t)
+  /**
+   * Gli schemi da proporre nel flusso della conclusione: solo quelli della
+   * situazione scelta, non tutti quelli della stagione.
+   */
+  const schemiTiro = origineRichiedeSchema(tiroOrigine)
+    ? schemiPerTipo(tiroOrigine as TipoInattiva)
+    : []
+
+  // ----- Conclusioni subite e xGA -----
+  const conteggiZoneSubiti = conteggiPerZona(eventi, 'loro')
+  const xgaPartita = xgTotale(eventi, 'loro')
+  const tiriSubitiConZona = contaTiriConZona(eventi, 'loro')
 
   // ----- AZIONI -----
 
-  // Gol subito: scelta tra "gol normale" e "autogol di un nostro"
-  async function segnaGolSubitoNormale() {
+  // ----- CONCLUSIONE SUBITA: zona → esito -----
+
+  function apriSubito() {
+    setSubitoZona(null)
+    setPassoSubito('zona')
+    setShowGolSubito(true)
+  }
+
+  function chiudiSubito() {
+    setShowGolSubito(false)
+    setSubitoZona(null)
+    setPassoSubito('zona')
+  }
+
+  function scegliZonaSubito(z: ZonaTiro) {
+    setSubitoZona(z)
+    setPassoSubito('esito')
+  }
+
+  async function segnaGolSubito() {
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tempoGioco,
       tipo: 'gol_subito',
+      zona: subitoZona ?? undefined,
     })
-    setShowGolSubito(false)
+    chiudiSubito()
+  }
+
+  async function registraTiroSubito(esito: EsitoTiro) {
+    // Senza zona non c'è xGA da calcolare: un tiro loro che non so
+    // localizzare non aggiunge niente, quindi non lo registro.
+    if (subitoZona === null) return
+    await db.eventi.add({
+      partitaId: partita.id!,
+      minuto,
+      tempoGioco,
+      tipo: 'tiro_subito',
+      zona: subitoZona,
+      esito,
+    })
+    chiudiSubito()
   }
 
   function apriAutogolContro() {
-    setShowGolSubito(false)
+    chiudiSubito()
     setShowAutogolContro(true)
   }
 
@@ -1030,7 +1088,7 @@ function Live({
         </div>
 
         {/* Riga xG */}
-        {(tiriTotali > 0 || inattiveBattute > 0) && (
+        {(tiriTotali > 0 || tiriSubitiConZona > 0 || inattiveBattute > 0) && (
           <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3 flex-wrap text-xs text-slate-400">
             <span>
               Tiri <span className="font-semibold text-slate-200">{tiriTotali}</span>
@@ -1042,6 +1100,17 @@ function Live({
                 {formatXG(xgPartita)}
               </span>
             </span>
+            {tiriSubitiConZona > 0 && (
+              <>
+                <span className="text-slate-600">•</span>
+                <span>
+                  xGA{' '}
+                  <span className="font-semibold text-red-400 tabular-nums">
+                    {formatXG(xgaPartita)}
+                  </span>
+                </span>
+              </>
+            )}
             {inattiveBattute > 0 && (
               <>
                 <span className="text-slate-600">•</span>
@@ -1098,10 +1167,10 @@ function Live({
               🎯 Tiro / Gol
             </button>
             <button
-              onClick={() => setShowGolSubito(true)}
+              onClick={apriSubito}
               className="bg-red-600 hover:bg-red-500 py-4 rounded-lg font-bold text-lg"
             >
-              ⚽ Gol subito
+              🥅 Tiro / Gol loro
             </button>
           </div>
 
@@ -1208,22 +1277,59 @@ function Live({
       )}
 
       {/* Mappa tiri */}
-      {tiriConZona > 0 && (
+      {tiriConZona + tiriSubitiConZona > 0 && (
         <section className="mt-6">
           <button
             onClick={() => setShowMappa((v) => !v)}
             className="w-full flex items-center justify-between text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2"
           >
-            <span>Mappa tiri ({tiriConZona})</span>
+            <span>
+              Mappa tiri ({fronteMappa === 'nostro' ? tiriConZona : tiriSubitiConZona})
+            </span>
             <span className="text-slate-500">{showMappa ? '▲' : '▼'}</span>
           </button>
           {showMappa && (
             <>
-              <CampoTiri modalita="mappa" conteggi={conteggiZone} />
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <button
+                  onClick={() => setFronteMappa('nostro')}
+                  className={`py-2 rounded-lg text-sm font-semibold ${
+                    fronteMappa === 'nostro'
+                      ? 'bg-emerald-600'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  Nostri ({tiriConZona})
+                </button>
+                <button
+                  onClick={() => setFronteMappa('loro')}
+                  className={`py-2 rounded-lg text-sm font-semibold ${
+                    fronteMappa === 'loro'
+                      ? 'bg-red-600'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  Subiti ({tiriSubitiConZona})
+                </button>
+              </div>
+              <CampoTiri
+                modalita="mappa"
+                conteggi={fronteMappa === 'nostro' ? conteggiZone : conteggiZoneSubiti}
+              />
               <p className="text-xs text-slate-500 mt-2">
                 In ogni zona: <strong className="text-slate-400">gol/tiri</strong>.
-                Più la zona è verde, più si è tirato da lì. xG partita:{' '}
-                <strong className="text-emerald-400">{formatXG(xgPartita)}</strong>
+                Più la zona è verde, più si è tirato da lì.{' '}
+                {fronteMappa === 'nostro' ? (
+                  <>
+                    xG partita:{' '}
+                    <strong className="text-emerald-400">{formatXG(xgPartita)}</strong>
+                  </>
+                ) : (
+                  <>
+                    xGA partita:{' '}
+                    <strong className="text-red-400">{formatXG(xgaPartita)}</strong>
+                  </>
+                )}
               </p>
             </>
           )}
@@ -1332,13 +1438,17 @@ function Live({
 
         {passo === 'schema' && (
           <>
-            {schemi.length === 0 ? (
+            <p className="text-xs text-slate-400 mb-2">
+              Schemi da {inattivaLabel(tiroOrigine as TipoInattiva).toLowerCase()}
+            </p>
+            {schemiTiro.length === 0 ? (
               <p className="text-slate-400 text-sm mb-3">
-                Nessuno schema definito. Puoi aggiungerli dal setup della stagione.
+                Nessuno schema definito per questa situazione. Puoi aggiungerli
+                dal setup della stagione.
               </p>
             ) : (
               <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
-                {schemi.map((s) => (
+                {schemiTiro.map((s) => (
                   <li key={s.id}>
                     <button
                       onClick={() => scegliSchema(s.id!)}
@@ -1600,30 +1710,82 @@ function Live({
         )}
       </Modal>
 
-      {/* ----- MODAL: gol subito (scelta tra normale e autogol) ----- */}
-      <Modal
-        open={showGolSubito}
-        onClose={() => setShowGolSubito(false)}
-        title="Gol subito"
-      >
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={segnaGolSubitoNormale}
-            className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
-          >
-            <div className="font-semibold">Gol dell'avversario</div>
-            <div className="text-xs text-slate-400">Gol normale subito</div>
-          </button>
-          <button
-            onClick={apriAutogolContro}
-            className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
-          >
-            <div className="font-semibold">Autogol di un nostro</div>
-            <div className="text-xs text-slate-400">
-              Un nostro giocatore ha segnato nella propria porta
+      {/* ----- MODAL: conclusione subita (zona → esito) ----- */}
+      <Modal open={showGolSubito} onClose={chiudiSubito} title="Conclusione loro">
+        {passoSubito === 'zona' && (
+          <>
+            <p className="text-xs text-slate-400 mb-2">
+              Tocca la zona da cui hanno concluso. È la nostra porta, vista da
+              loro: la porta è in alto.
+            </p>
+            <CampoTiri modalita="seleziona" onSelect={scegliZonaSubito} />
+            <div className="border-t border-slate-700 mt-3 pt-3 flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setSubitoZona(null)
+                  setPassoSubito('esito')
+                }}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                title="Solo per un gol subito: senza zona non conta nell'xGA"
+              >
+                Non lo so — è comunque gol
+              </button>
+              <button
+                onClick={apriAutogolContro}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                Autogol di un nostro
+              </button>
             </div>
-          </button>
-        </div>
+          </>
+        )}
+
+        {passoSubito === 'esito' && (
+          <>
+            <p className="text-sm text-slate-400 mb-3">
+              {subitoZona !== null ? (
+                <>
+                  Hanno concluso da{' '}
+                  <strong className="text-slate-200">{zonaLabel(subitoZona)}</strong>{' '}
+                  <span className="text-red-400">
+                    (xGA {pesoZona(subitoZona).toFixed(2)})
+                  </span>
+                </>
+              ) : (
+                <span className="text-amber-400/80">Zona non registrata</span>
+              )}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={segnaGolSubito}
+                className="bg-red-600 hover:bg-red-500 px-4 py-3 rounded-lg font-bold"
+              >
+                ⚽ Gol subito
+              </button>
+              {subitoZona !== null &&
+                ESITI_TIRO.map((es) => (
+                  <button
+                    key={es.value}
+                    onClick={() => registraTiroSubito(es.value)}
+                    className="bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg text-left"
+                  >
+                    {es.label}
+                    {es.inPorta && (
+                      <span className="text-xs text-slate-400 ml-2">(in porta)</span>
+                    )}
+                  </button>
+                ))}
+            </div>
+            <div className="border-t border-slate-700 mt-3 pt-3">
+              <button
+                onClick={() => setPassoSubito('zona')}
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+              >
+                ← Indietro
+              </button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* ----- MODAL: chi ha fatto autogol contro ----- */}

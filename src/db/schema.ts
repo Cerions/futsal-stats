@@ -129,7 +129,8 @@ export type Evento =
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'inizio_tempo'; tempo: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'fine_tempo'; tempo: number }
   | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_fatto'; giocatoreId: number; assistId?: number; zona?: ZonaTiro } & DatiOrigine)
-  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_subito'; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_subito'; zona?: ZonaTiro; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro_subito'; zona: ZonaTiro; esito: EsitoTiro; noteGiocatoreAvv?: string }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_pro'; noteGiocatoreAvv?: string }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_contro'; giocatoreId: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'cambio'; giocatoreEntraId: number; giocatoreEsceId: number }

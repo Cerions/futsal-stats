@@ -8,12 +8,15 @@ import type {
   ZonaTiro,
 } from '../db/schema'
 import {
+  eGolConZona,
   esitoInPorta,
   origineDi,
   ORIGINI_TIRO,
   pesoZona,
   TIPI_INATTIVA,
+  zonaDiTiro,
 } from '../db/zone'
+import type { Fronte } from '../db/zone'
 import type { ConteggioZona } from '../components/CampoTiri'
 
 export interface StatsGiocatore {
@@ -304,8 +307,12 @@ export function calcolaStatistiche(
 /**
  * Conta tiri e gol per ogni zona, per disegnare la mappa dei tiri.
  * Considera sia i tiri espliciti sia i gol a cui è stata associata una zona.
+ * Con fronte 'loro' disegna la mappa di quello che ci hanno tirato addosso.
  */
-export function conteggiPerZona(eventi: Evento[]): Map<ZonaTiro, ConteggioZona> {
+export function conteggiPerZona(
+  eventi: Evento[],
+  fronte: Fronte = 'nostro'
+): Map<ZonaTiro, ConteggioZona> {
   const mappa = new Map<ZonaTiro, ConteggioZona>()
   const get = (z: ZonaTiro) => {
     let c = mappa.get(z)
@@ -317,15 +324,18 @@ export function conteggiPerZona(eventi: Evento[]): Map<ZonaTiro, ConteggioZona> 
   }
 
   for (const e of eventi) {
-    if (e.tipo === 'tiro') {
-      get(e.zona).tiri += 1
-    } else if (e.tipo === 'gol_fatto' && e.zona !== undefined) {
-      const c = get(e.zona)
-      c.tiri += 1
-      c.gol += 1
-    }
+    const z = zonaDiTiro(e, fronte)
+    if (z === null) continue
+    const c = get(z)
+    c.tiri += 1
+    if (eGolConZona(e, fronte)) c.gol += 1
   }
   return mappa
+}
+
+/** Quante conclusioni hanno una zona registrata, per fronte. */
+export function contaTiriConZona(eventi: Evento[], fronte: Fronte = 'nostro'): number {
+  return eventi.filter((e) => zonaDiTiro(e, fronte) !== null).length
 }
 
 // ===========================================================================

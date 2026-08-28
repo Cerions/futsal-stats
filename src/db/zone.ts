@@ -234,20 +234,42 @@ export function esitoInPorta(e: EsitoTiro): boolean {
 }
 
 /**
- * Un evento conta come tiro se è un 'tiro' esplicito oppure un gol
- * a cui è stata associata una zona.
+ * Da che parte si guarda una conclusione: quelle che facciamo noi
+ * ('nostro') o quelle che ci fanno gli avversari ('loro', da cui l'xGA).
  */
-export function zonaDiTiro(e: Evento): ZonaTiro | null {
-  if (e.tipo === 'tiro') return e.zona
-  if (e.tipo === 'gol_fatto' && e.zona !== undefined) return e.zona
+export type Fronte = 'nostro' | 'loro'
+
+/**
+ * Un evento conta come tiro se è un 'tiro' esplicito oppure un gol
+ * a cui è stata associata una zona. L'autogol non ha zona e non conta
+ * per nessuno dei due fronti: non è una conclusione verso la porta.
+ */
+export function zonaDiTiro(e: Evento, fronte: Fronte = 'nostro'): ZonaTiro | null {
+  if (fronte === 'nostro') {
+    if (e.tipo === 'tiro') return e.zona
+    if (e.tipo === 'gol_fatto' && e.zona !== undefined) return e.zona
+    return null
+  }
+  if (e.tipo === 'tiro_subito') return e.zona
+  if (e.tipo === 'gol_subito' && e.zona !== undefined) return e.zona
   return null
 }
 
-/** xG totale di una lista di eventi (solo i tiri con zona). */
-export function xgTotale(eventi: Evento[]): number {
+/** true se l'evento è un gol per il fronte richiesto, con la zona registrata. */
+export function eGolConZona(e: Evento, fronte: Fronte = 'nostro'): boolean {
+  const tipoGol = fronte === 'nostro' ? 'gol_fatto' : 'gol_subito'
+  return e.tipo === tipoGol && e.zona !== undefined
+}
+
+/**
+ * xG totale di una lista di eventi (solo le conclusioni con zona).
+ * Con fronte 'loro' è l'xGA: quanto era probabile che gli avversari
+ * segnassero da dove hanno concluso.
+ */
+export function xgTotale(eventi: Evento[], fronte: Fronte = 'nostro'): number {
   let tot = 0
   for (const e of eventi) {
-    const z = zonaDiTiro(e)
+    const z = zonaDiTiro(e, fronte)
     if (z !== null) tot += pesoZona(z)
   }
   return tot

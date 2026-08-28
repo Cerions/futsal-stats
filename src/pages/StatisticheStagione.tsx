@@ -6,6 +6,7 @@ import {
   calcolaStatistiche,
   conteggiPerZona,
   contaInattive,
+  contaTiriConZona,
   statistichePerOrigine,
   statistichePerSchema,
 } from '../utils/statistiche'
@@ -23,6 +24,7 @@ import {
   xgTotale,
   ZONE_TIRO,
 } from '../db/zone'
+import type { Fronte } from '../db/zone'
 
 type ColonnaOrdinabile =
   | 'giocatore'
@@ -131,6 +133,7 @@ export default function StatisticheStagione() {
   const [colonna, setColonna] = useState<ColonnaOrdinabile>('gol')
   const [discendente, setDiscendente] = useState(true)
   const [vista, setVista] = useState<Vista>('generali')
+  const [fronteMappa, setFronteMappa] = useState<Fronte>('nostro')
 
   if (!stagione || !rosa || !partite || !eventi || !schemi) {
     return <div className="p-6">Caricamento...</div>
@@ -147,6 +150,13 @@ export default function StatisticheStagione() {
   const eventiFiniti = eventi.filter((e) => idPartiteFinite.has(e.partitaId))
   const conteggiZone = conteggiPerZona(eventiFiniti)
   const xgStagione = xgTotale(eventiFiniti)
+  // Fronte avversario: mappa e xGA di quello che ci hanno tirato addosso
+  const conteggiZoneSubiti = conteggiPerZona(eventiFiniti, 'loro')
+  const xgaStagione = xgTotale(eventiFiniti, 'loro')
+  const tiriSubiti = contaTiriConZona(eventiFiniti, 'loro')
+  const golSubitiTotali = eventiFiniti.filter(
+    (e) => e.tipo === 'gol_subito' || e.tipo === 'autogol_contro'
+  ).length
   const tiriStagione = stats.reduce((t, s) => t + s.tiri, 0)
   const golSenzaZona = stats.reduce((t, s) => t + s.golSenzaZona, 0)
   const perOrigine = statistichePerOrigine(eventiFiniti)
@@ -497,6 +507,24 @@ export default function StatisticheStagione() {
             </div>
           </div>
 
+          {/* Riepilogo subiti: lo stesso metro, dall'altra parte */}
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="bg-slate-800 rounded-lg p-3 text-center">
+              <div className="text-xs text-slate-400">Tiri subiti</div>
+              <div className="text-xl font-bold tabular-nums">{tiriSubiti}</div>
+            </div>
+            <div className="bg-slate-800 rounded-lg p-3 text-center">
+              <div className="text-xs text-slate-400">xGA</div>
+              <div className="text-xl font-bold tabular-nums text-red-400">
+                {formatXG(xgaStagione)}
+              </div>
+            </div>
+            <div className="bg-slate-800 rounded-lg p-3 text-center">
+              <div className="text-xs text-slate-400">Gol subiti</div>
+              <div className="text-xl font-bold tabular-nums">{golSubitiTotali}</div>
+            </div>
+          </div>
+
           {golSenzaZona > 0 && (
             <p className="text-xs text-amber-400/90 bg-amber-900/20 border border-amber-800/50 rounded-lg px-3 py-2 mb-4">
               {golSenzaZona}{' '}
@@ -571,12 +599,39 @@ export default function StatisticheStagione() {
             <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
               Mappa tiri stagione
             </h2>
+            <div className="grid grid-cols-2 gap-2 mb-2 max-w-sm">
+              <button
+                onClick={() => setFronteMappa('nostro')}
+                className={`py-2 rounded-lg text-sm font-semibold ${
+                  fronteMappa === 'nostro'
+                    ? 'bg-emerald-600'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+              >
+                Nostri
+              </button>
+              <button
+                onClick={() => setFronteMappa('loro')}
+                className={`py-2 rounded-lg text-sm font-semibold ${
+                  fronteMappa === 'loro'
+                    ? 'bg-red-600'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+              >
+                Subiti
+              </button>
+            </div>
             <div className="max-w-sm">
-              <CampoTiri modalita="mappa" conteggi={conteggiZone} />
+              <CampoTiri
+                modalita="mappa"
+                conteggi={fronteMappa === 'nostro' ? conteggiZone : conteggiZoneSubiti}
+              />
             </div>
             <p className="text-xs text-slate-500 mt-2">
               In ogni zona: <strong className="text-slate-400">gol/tiri</strong>.
-              Più la zona è verde, più si è tirato da lì.
+              Più la zona è verde, più si è tirato da lì.{' '}
+              {fronteMappa === 'loro' &&
+                'Qui è la nostra porta: sono le conclusioni che abbiamo concesso.'}
             </p>
           </section>
 
@@ -591,6 +646,13 @@ export default function StatisticheStagione() {
                 Non è un modello allenato: è una tabella tarata su conversioni
                 tipiche del calcio a 5, utile per confrontare giocatori e partite
                 tra loro.
+              </p>
+              <p className="mb-2">
+                L'<strong>xGA</strong> è la stessa somma sulle conclusioni che
+                subiamo: quanto era probabile che gli avversari segnassero da dove
+                hanno tirato. Se i gol subiti sono più dell'xGA stiamo concedendo
+                meno di quanto paghiamo (o il portiere è in giornata storta); se
+                sono meno, il contrario.
               </p>
               <ul className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                 {ZONE_TIRO.map((z) => (

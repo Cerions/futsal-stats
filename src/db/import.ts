@@ -243,6 +243,15 @@ function rimappaEvento(
       return {
         ...base,
         tipo: 'gol_subito',
+        zona: e.zona,
+        noteGiocatoreAvv: e.noteGiocatoreAvv,
+      }
+    case 'tiro_subito':
+      return {
+        ...base,
+        tipo: 'tiro_subito',
+        zona: e.zona,
+        esito: e.esito,
         noteGiocatoreAvv: e.noteGiocatoreAvv,
       }
     case 'autogol_pro':
