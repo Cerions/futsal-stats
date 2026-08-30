@@ -187,6 +187,8 @@ export default function SetupStagione() {
     )
   }
 
+  const soloLettura = stagione.soloLettura === true
+
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -205,6 +207,13 @@ export default function SetupStagione() {
         </button>
       </div>
 
+      {soloLettura && (
+        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-6">
+          👀 <strong>Sola lettura</strong>: rosa, avversari e schemi di questa
+          stagione li gestisce chi te l'ha condivisa.
+        </p>
+      )}
+
       {/* Sezione Rosa */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
@@ -214,12 +223,14 @@ export default function SetupStagione() {
               ({giocatori?.length ?? 0})
             </span>
           </h2>
-          <button
-            onClick={apriNuovoGiocatore}
-            className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
-          >
-            + Giocatore
-          </button>
+          {!soloLettura && (
+            <button
+              onClick={apriNuovoGiocatore}
+              className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
+            >
+              + Giocatore
+            </button>
+          )}
         </div>
 
         {giocatori && giocatori.length > 0 ? (
@@ -240,20 +251,24 @@ export default function SetupStagione() {
                     <div className="font-medium">{nomeCompleto(g)}</div>
                     <div className="text-xs text-slate-400">{ruoloLabel(g.ruolo)}</div>
                   </div>
-                  <button
-                    onClick={() => apriModificaGiocatore(g)}
-                    className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                    title="Modifica"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => eliminaGiocatore(g.id!)}
-                    className="text-slate-400 hover:text-red-400 text-sm px-2"
-                    title="Elimina"
-                  >
-                    🗑️
-                  </button>
+                  {!soloLettura && (
+                    <>
+                      <button
+                        onClick={() => apriModificaGiocatore(g)}
+                        className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                        title="Modifica"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => eliminaGiocatore(g.id!)}
+                        className="text-slate-400 hover:text-red-400 text-sm px-2"
+                        title="Elimina"
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  )}
                 </li>
               ))}
           </ul>
@@ -271,12 +286,14 @@ export default function SetupStagione() {
               ({avversari?.length ?? 0})
             </span>
           </h2>
-          <button
-            onClick={apriNuovoAvversario}
-            className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
-          >
-            + Avversario
-          </button>
+          {!soloLettura && (
+            <button
+              onClick={apriNuovoAvversario}
+              className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
+            >
+              + Avversario
+            </button>
+          )}
         </div>
 
         {avversari && avversari.length > 0 ? (
@@ -287,20 +304,24 @@ export default function SetupStagione() {
                 className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
               >
                 <span className="flex-1">{a.nome}</span>
-                <button
-                  onClick={() => apriModificaAvversario(a)}
-                  className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                  title="Modifica"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => eliminaAvversario(a.id!)}
-                  className="text-slate-400 hover:text-red-400 text-sm px-2"
-                  title="Elimina"
-                >
-                  🗑️
-                </button>
+                {!soloLettura && (
+                  <>
+                    <button
+                      onClick={() => apriModificaAvversario(a)}
+                      className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                      title="Modifica"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => eliminaAvversario(a.id!)}
+                      className="text-slate-400 hover:text-red-400 text-sm px-2"
+                      title="Elimina"
+                    >
+                      🗑️
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -333,12 +354,14 @@ export default function SetupStagione() {
                       ({delTipo.length})
                     </span>
                   </h3>
-                  <button
-                    onClick={() => apriNuovoSchema(t.value)}
-                    className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-xs"
-                  >
-                    + Schema
-                  </button>
+                  {!soloLettura && (
+                    <button
+                      onClick={() => apriNuovoSchema(t.value)}
+                      className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-xs"
+                    >
+                      + Schema
+                    </button>
+                  )}
                 </div>
 
                 {delTipo.length > 0 ? (
@@ -356,20 +379,24 @@ export default function SetupStagione() {
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => apriModificaSchema(s)}
-                          className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                          title="Modifica"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => eliminaSchema(s.id!)}
-                          className="text-slate-400 hover:text-red-400 text-sm px-2"
-                          title="Elimina"
-                        >
-                          🗑️
-                        </button>
+                        {!soloLettura && (
+                          <>
+                            <button
+                              onClick={() => apriModificaSchema(s)}
+                              className="text-slate-400 hover:text-slate-100 text-sm px-2"
+                              title="Modifica"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => eliminaSchema(s.id!)}
+                              className="text-slate-400 hover:text-red-400 text-sm px-2"
+                              title="Elimina"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>

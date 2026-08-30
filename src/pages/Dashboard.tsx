@@ -98,6 +98,9 @@ export default function Dashboard() {
   const partiteDaGiocare = partite?.filter((p) => p.stato === 'da_giocare') ?? []
   const partiteFinite = partite?.filter((p) => p.stato === 'finita') ?? []
 
+  // Stagione condivisa da qualcun altro: si guarda e basta.
+  const soloLettura = stagione.soloLettura === true
+
   return (
     <div className="max-w-2xl mx-auto p-6">
       {/* Header */}
@@ -128,31 +131,34 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {stagione.soloLettura && (
-        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-4">
-          Stagione condivisa in <strong>sola lettura</strong>: le modifiche fatte
-          qui non tornano a chi te l'ha condivisa e vengono sovrascritte al
-          prossimo scaricamento.
+      {soloLettura ? (
+        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-6">
+          👀 <strong>Sola lettura</strong>: questa stagione è condivisa con te.
+          Puoi consultare partite, statistiche e rosa, ma non modificarle. Si
+          aggiorna da sola quando chi te l'ha condivisa registra qualcosa.
         </p>
-      )}
+      ) : (
+        <>
+          {/* Bottone nuova partita */}
+          <button
+            onClick={() => setShowNuovaPartita(true)}
+            disabled={!avversari || avversari.length === 0}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed py-4 rounded-lg font-semibold mb-6"
+          >
+            + Nuova partita
+          </button>
 
-      {/* Bottone nuova partita */}
-      <button
-        onClick={() => setShowNuovaPartita(true)}
-        disabled={!avversari || avversari.length === 0}
-        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed py-4 rounded-lg font-semibold mb-6"
-      >
-        + Nuova partita
-      </button>
-
-      {avversari && avversari.length === 0 && (
-        <p className="text-sm text-amber-400 mb-6 -mt-4">
-          Prima di creare una partita aggiungi almeno una squadra avversaria dal{' '}
-          <Link to={`/setup-stagione/${stagioneId}`} className="underline">
-            setup
-          </Link>
-          .
-        </p>
+          {avversari && avversari.length === 0 && (
+            <p className="text-sm text-amber-400 mb-6 -mt-4">
+              Prima di creare una partita aggiungi almeno una squadra avversaria
+              dal{' '}
+              <Link to={`/setup-stagione/${stagioneId}`} className="underline">
+                setup
+              </Link>
+              .
+            </p>
+          )}
+        </>
       )}
 
       {/* Partite in corso */}
@@ -206,12 +212,14 @@ export default function Dashboard() {
                   </div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
-                <button
-                  onClick={() => eliminaPartitaConferma(p.id!)}
-                  className="text-slate-500 hover:text-red-400 text-sm ml-3"
-                >
-                  Elimina
-                </button>
+                {!soloLettura && (
+                  <button
+                    onClick={() => eliminaPartitaConferma(p.id!)}
+                    className="text-slate-500 hover:text-red-400 text-sm ml-3"
+                  >
+                    Elimina
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -240,12 +248,14 @@ export default function Dashboard() {
                   </div>
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
-                <button
-                  onClick={() => eliminaPartitaConferma(p.id!)}
-                  className="text-slate-500 hover:text-red-400 text-sm ml-3"
-                >
-                  Elimina
-                </button>
+                {!soloLettura && (
+                  <button
+                    onClick={() => eliminaPartitaConferma(p.id!)}
+                    className="text-slate-500 hover:text-red-400 text-sm ml-3"
+                  >
+                    Elimina
+                  </button>
+                )}
               </li>
             ))}
           </ul>

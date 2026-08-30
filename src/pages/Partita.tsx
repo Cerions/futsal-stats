@@ -24,6 +24,7 @@ import type {
 } from '../db/schema'
 import { nomeSquadra } from '../utils/stagione'
 import { nomeCompleto, nomeCorto } from '../utils/giocatore'
+import { formatDataOra } from '../utils/format'
 import TagBadge from '../components/TagBadge'
 import TagSelector from '../components/TagSelector'
 import { descriviEvento } from '../utils/evento'
@@ -102,6 +103,7 @@ export default function Partita() {
         rosa={rosa}
         avversari={avversari ?? []}
         stagioneId={stagione.id!}
+        soloLettura={stagione.soloLettura === true}
       />
     )
   }
@@ -115,6 +117,7 @@ export default function Partita() {
       avversarioNome={avversario.nome}
       squadraNome={nomeSquadra(stagione)}
       stagioneId={stagione.id!}
+      soloLettura={stagione.soloLettura === true}
     />
   )
 }
@@ -128,11 +131,13 @@ function PreMatch({
   rosa,
   avversari,
   stagioneId,
+  soloLettura,
 }: {
   partita: PartitaType
   rosa: Giocatore[]
   avversari: SquadraAvversaria[]
   stagioneId: number
+  soloLettura: boolean
 }) {
   const [showInizio, setShowInizio] = useState(false)
   // I due campi numerici hanno stato locale: salvarli a ogni tasto premuto
@@ -239,6 +244,65 @@ function PreMatch({
     .toISOString()
     .slice(0, 16)
 
+  const formato = (
+    <>
+      {partita.config.numeroTempi} tempi da {partita.config.durataTempoMinuti}′ ·
+      tempo effettivo {partita.config.tempoEffettivo ? 'acceso' : 'spento'}
+    </>
+  )
+
+  // Stagione condivisa: della preparazione si legge solo il risultato.
+  if (soloLettura) {
+    const nomiConvocati = rosaOrdinata.filter((g) => convocati.has(g.id!))
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <Link to={`/stagione/${stagioneId}`} className="text-sm text-slate-400">
+          ← Stagione
+        </Link>
+        <div className="flex items-center gap-2 flex-wrap mt-1">
+          <h1 className="text-2xl font-bold">vs {avversarioNome}</h1>
+          <TagBadge tag={partita.tag} />
+        </div>
+        <p className="text-sm text-slate-400 mb-6">
+          Non ancora iniziata · {formatDataOra(partita.dataOra)} · {formato}
+        </p>
+
+        <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
+          Convocati ({nomiConvocati.length})
+        </h2>
+        {nomiConvocati.length === 0 ? (
+          <p className="text-slate-500 italic text-sm">
+            Nessun convocato ancora scelto.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {nomiConvocati.map((g) => (
+              <li
+                key={g.id}
+                className="bg-slate-800 rounded-lg px-4 py-2 flex items-center gap-3"
+              >
+                {g.numero !== undefined && (
+                  <span className="bg-slate-700 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
+                    {g.numero}
+                  </span>
+                )}
+                <span className="flex-1">{nomeCorto(g)}</span>
+                <span className="text-xs text-slate-500">
+                  {ruoloShort(g.ruolo)}
+                </span>
+                {titolari.has(g.id!) && (
+                  <span className="text-xs bg-emerald-600 px-2 py-0.5 rounded">
+                    Titolare
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-6 pb-32">
       <Link to={`/stagione/${stagioneId}`} className="text-sm text-slate-400">
@@ -248,11 +312,7 @@ function PreMatch({
         <h1 className="text-2xl font-bold">vs {avversarioNome}</h1>
         <TagBadge tag={partita.tag} />
       </div>
-      <p className="text-sm text-slate-400 mb-6">
-        Preparazione · {partita.config.numeroTempi} tempi da{' '}
-        {partita.config.durataTempoMinuti}′ · tempo effettivo{' '}
-        {partita.config.tempoEffettivo ? 'acceso' : 'spento'}
-      </p>
+      <p className="text-sm text-slate-400 mb-6">Preparazione · {formato}</p>
 
       {/* ===== 1. Impostazioni ===== */}
       <section className="bg-slate-800 rounded-xl p-4 mb-6 flex flex-col gap-3">
@@ -550,6 +610,7 @@ function Live({
   avversarioNome,
   squadraNome,
   stagioneId,
+  soloLettura,
 }: {
   partita: PartitaType
   rosa: Giocatore[]
@@ -558,6 +619,8 @@ function Live({
   avversarioNome: string
   squadraNome: string
   stagioneId: number
+  /** Stagione condivisa da altri: si guarda e basta. */
+  soloLettura: boolean
 }) {
   // Tick locale per aggiornare il cronometro a video ogni secondo (non in DB!)
   const [, setTick] = useState(0)
@@ -1136,64 +1199,68 @@ function Live({
 
       {!finita && (
         <>
-          {/* Bottoni cronometro */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              onClick={pausaRiprendi}
-              className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
-            >
-              {partita.cronometro.inPausa
-                ? partita.cronometro.secondiAccumulati === 0 &&
-                  partita.cronometro.tempoCorrente !== null &&
-                  partita.cronometro.tempoCorrente > 1
-                  ? `▶ Inizio ${partita.cronometro.tempoCorrente}° tempo`
-                  : '▶ Riprendi'
-                : '⏸ Pausa'}
-            </button>
-            <button
-              onClick={() => setShowFineTempo(true)}
-              className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
-            >
-              Fine tempo
-            </button>
-          </div>
+          {!soloLettura && (
+            <>
+            {/* Bottoni cronometro */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                onClick={pausaRiprendi}
+                className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
+              >
+                {partita.cronometro.inPausa
+                  ? partita.cronometro.secondiAccumulati === 0 &&
+                    partita.cronometro.tempoCorrente !== null &&
+                    partita.cronometro.tempoCorrente > 1
+                    ? `▶ Inizio ${partita.cronometro.tempoCorrente}° tempo`
+                    : '▶ Riprendi'
+                  : '⏸ Pausa'}
+              </button>
+              <button
+                onClick={() => setShowFineTempo(true)}
+                className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold"
+              >
+                Fine tempo
+              </button>
+            </div>
 
-          {/* Conclusioni */}
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <button
-              onClick={() => apriTiro()}
-              className="bg-emerald-600 hover:bg-emerald-500 py-4 rounded-lg font-bold text-lg"
-            >
-              🎯 Tiro / Gol
-            </button>
-            <button
-              onClick={apriSubito}
-              className="bg-red-600 hover:bg-red-500 py-4 rounded-lg font-bold text-lg"
-            >
-              🥅 Tiro / Gol loro
-            </button>
-          </div>
+            {/* Conclusioni */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                onClick={() => apriTiro()}
+                className="bg-emerald-600 hover:bg-emerald-500 py-4 rounded-lg font-bold text-lg"
+              >
+                🎯 Tiro / Gol
+              </button>
+              <button
+                onClick={apriSubito}
+                className="bg-red-600 hover:bg-red-500 py-4 rounded-lg font-bold text-lg"
+              >
+                🥅 Tiro / Gol loro
+              </button>
+            </div>
 
-          <button
-            onClick={apriInattiva}
-            className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold mb-4"
-          >
-            🚩 Palla inattiva
-          </button>
+            <button
+              onClick={apriInattiva}
+              className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold mb-4"
+            >
+              🚩 Palla inattiva
+            </button>
 
-          {/* Banner intervallo */}
-          {partita.cronometro.inPausa &&
-            partita.cronometro.secondiAccumulati === 0 &&
-            (partita.cronometro.tempoCorrente ?? 1) > 1 && (
-              <div className="bg-amber-900/40 border border-amber-700/60 rounded-lg p-3 mb-4 text-sm">
-                <p className="font-semibold text-amber-200">
-                  🕐 Intervallo prima del {partita.cronometro.tempoCorrente}° tempo
-                </p>
-                <p className="text-amber-200/80 text-xs mt-1">
-                  Puoi fare cambi ora. Premi "Inizio {partita.cronometro.tempoCorrente}° tempo" quando pronto.
-                </p>
-              </div>
-            )}
+            {/* Banner intervallo */}
+            {partita.cronometro.inPausa &&
+              partita.cronometro.secondiAccumulati === 0 &&
+              (partita.cronometro.tempoCorrente ?? 1) > 1 && (
+                <div className="bg-amber-900/40 border border-amber-700/60 rounded-lg p-3 mb-4 text-sm">
+                  <p className="font-semibold text-amber-200">
+                    🕐 Intervallo prima del {partita.cronometro.tempoCorrente}° tempo
+                  </p>
+                  <p className="text-amber-200/80 text-xs mt-1">
+                    Puoi fare cambi ora. Premi "Inizio {partita.cronometro.tempoCorrente}° tempo" quando pronto.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
 
           {/* In campo */}
           <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2 mt-4">
@@ -1212,15 +1279,17 @@ function Live({
                 )}
                 <span className="flex-1">{nomeCorto(g)}</span>
                 <span className="text-xs text-slate-500">{ruoloShort(g.ruolo)}</span>
-                <button
-                  onClick={() => {
-                    setEsceId(g.id!)
-                    setShowCambio(true)
-                  }}
-                  className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded"
-                >
-                  Cambia
-                </button>
+                {!soloLettura && (
+                  <button
+                    onClick={() => {
+                      setEsceId(g.id!)
+                      setShowCambio(true)
+                    }}
+                    className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded"
+                  >
+                    Cambia
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -1247,25 +1316,27 @@ function Live({
           )}
 
           {/* Bottoni gestione partita */}
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <Link
-              to={`/partita/${partita.id}/modifica`}
-              className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
-            >
-              Modifica
-            </Link>
-            <button
-              onClick={() => setShowFinePartita(true)}
-              className="bg-slate-700 hover:bg-red-700 py-3 rounded-lg font-semibold"
-            >
-              Termina partita
-            </button>
-          </div>
+          {!soloLettura && (
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <Link
+                to={`/partita/${partita.id}/modifica`}
+                className="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
+              >
+                Modifica
+              </Link>
+              <button
+                onClick={() => setShowFinePartita(true)}
+                className="bg-slate-700 hover:bg-red-700 py-3 rounded-lg font-semibold"
+              >
+                Termina partita
+              </button>
+            </div>
+          )}
         </>
       )}
 
       {/* Partita finita: bottone modifica a tutta larghezza */}
-      {finita && (
+      {finita && !soloLettura && (
         <div className="mb-4">
           <Link
             to={`/partita/${partita.id}/modifica`}

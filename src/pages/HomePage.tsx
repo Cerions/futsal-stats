@@ -211,6 +211,7 @@ export default function HomePage() {
                       <div className="text-xs text-slate-400">
                         {nomeSquadra(s)} • creata il{' '}
                         {new Date(s.dataCreazione).toLocaleDateString('it-IT')}
+                        {s.soloLettura && ' • condivisa con te'}
                       </div>
                     </button>
                     <button
@@ -220,13 +221,15 @@ export default function HomePage() {
                     >
                       ⬇️
                     </button>
-                    <button
-                      onClick={() => apriRinomina(s)}
-                      className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
-                      title="Modifica"
-                    >
-                      ✏️
-                    </button>
+                    {!s.soloLettura && (
+                      <button
+                        onClick={() => apriRinomina(s)}
+                        className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
+                        title="Modifica"
+                      >
+                        ✏️
+                      </button>
+                    )}
                     <button
                       onClick={() => eliminaStagioneConferma(s)}
                       className="text-slate-400 hover:text-red-400 px-2 py-1 text-sm"

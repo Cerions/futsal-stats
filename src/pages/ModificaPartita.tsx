@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
@@ -170,6 +170,11 @@ export default function ModificaPartita() {
 
   if (!partita || !stagione || !avversari || !rosa || !eventi || !schemi) {
     return <div className="p-6">Caricamento...</div>
+  }
+
+  // Le stagioni condivise si guardano e basta: qui non si entra proprio.
+  if (stagione.soloLettura) {
+    return <Navigate to={`/partita/${partitaId}`} replace />
   }
 
   const rosaConvocati = rosa

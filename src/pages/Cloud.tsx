@@ -189,8 +189,15 @@ export default function Cloud() {
   const mie = (stagioni ?? []).filter((s) => !s.soloLettura)
   const condivise = (stagioni ?? []).filter((s) => s.soloLettura)
   const idLocali = new Set((stagioni ?? []).map((s) => s.cloudId).filter(Boolean))
-  const soloSulCloud = (righeCloud ?? []).filter((r) => !idLocali.has(r.id))
   const miaUtenza = sessione.user.id
+  // Righe sul cloud non ancora presenti qui, tenute separate: le mie da
+  // scaricare, e quelle che qualcun altro ha condiviso con me. Chi riceve una
+  // condivisione deve trovarla in un posto solo, sotto «Condivise con te».
+  const nonScaricate = (righeCloud ?? []).filter((r) => !idLocali.has(r.id))
+  const soloSulCloud = nonScaricate.filter((r) => r.proprietario === miaUtenza)
+  const condiviseDaScaricare = nonScaricate.filter(
+    (r) => r.proprietario !== miaUtenza
+  )
 
   return (
     <Guscio>
@@ -343,52 +350,66 @@ export default function Cloud() {
         <p className="text-slate-500 text-sm mb-6">Sto leggendo...</p>
       ) : soloSulCloud.length === 0 ? (
         <p className="text-slate-500 italic text-sm mb-6">
-          Niente da scaricare: hai già tutto qui.
+          Nessuna tua stagione da scaricare: le hai già tutte qui.
         </p>
       ) : (
         <ul className="flex flex-col gap-2 mb-6">
-          {soloSulCloud.map((r) => {
-            const mia = r.proprietario === miaUtenza
-            return (
-              <li key={r.id} className="bg-slate-800 rounded-lg px-4 py-3">
-                <div className="font-semibold">{r.nome}</div>
-                <div className="text-xs text-slate-400">{r.nome_squadra}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  v{r.versione} · {quando(r.aggiornato_il)}
-                  {r.aggiornato_da ? ` da ${r.aggiornato_da}` : ''}
-                  {!mia && ' · condivisa con te, sola lettura'}
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => scarica(r.id, !mia)}
-                    disabled={inCorso === `down-${r.id}`}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold"
-                  >
-                    {inCorso === `down-${r.id}` ? 'Scarico...' : '⬇ Scarica qui'}
-                  </button>
-                  {mia && (
-                    <button
-                      onClick={() => eliminaCloud(r)}
-                      className="bg-slate-700 hover:bg-red-700 px-3 py-2 rounded-lg text-sm"
-                      title="Elimina dal cloud"
-                    >
-                      🗑️
-                    </button>
-                  )}
-                </div>
-              </li>
-            )
-          })}
+          {soloSulCloud.map((r) => (
+            <li key={r.id} className="bg-slate-800 rounded-lg px-4 py-3">
+              <div className="font-semibold">{r.nome}</div>
+              <div className="text-xs text-slate-400">{r.nome_squadra}</div>
+              <div className="text-xs text-slate-500 mt-1">
+                v{r.versione} · {quando(r.aggiornato_il)}
+                {r.aggiornato_da ? ` da ${r.aggiornato_da}` : ''}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => scarica(r.id, false)}
+                  disabled={inCorso === `down-${r.id}`}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold"
+                >
+                  {inCorso === `down-${r.id}` ? 'Scarico...' : '⬇ Scarica qui'}
+                </button>
+                <button
+                  onClick={() => eliminaCloud(r)}
+                  className="bg-slate-700 hover:bg-red-700 px-3 py-2 rounded-lg text-sm"
+                  title="Elimina dal cloud"
+                >
+                  🗑️
+                </button>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 
-      {/* ---- stagioni condivise, scaricate qui in sola lettura ---- */}
-      {condivise.length > 0 && (
+      {/* ---- stagioni che altri hanno condiviso con me, in sola lettura ---- */}
+      {(condivise.length > 0 || condiviseDaScaricare.length > 0) && (
         <>
           <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
             Condivise con te
           </h2>
+          <p className="text-xs text-slate-500 mb-2">
+            Le puoi consultare ma non modificare. Una volta scaricate si
+            aggiornano da sole quando chi te le ha condivise registra qualcosa.
+          </p>
           <ul className="flex flex-col gap-2 mb-6">
+            {condiviseDaScaricare.map((r) => (
+              <li key={r.id} className="bg-slate-800 rounded-lg px-4 py-3">
+                <div className="font-semibold">{r.nome}</div>
+                <div className="text-xs text-slate-400">{r.nome_squadra}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  v{r.versione} · {quando(r.aggiornato_il)} · sola lettura
+                </div>
+                <button
+                  onClick={() => scarica(r.id, true)}
+                  disabled={inCorso === `down-${r.id}`}
+                  className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold"
+                >
+                  {inCorso === `down-${r.id}` ? 'Scarico...' : '⬇ Scarica qui'}
+                </button>
+              </li>
+            ))}
             {condivise.map((s) => (
               <li key={s.id} className="bg-slate-800 rounded-lg px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -478,9 +499,21 @@ export default function Cloud() {
         title="Condividi in sola lettura"
       >
         <p className="text-slate-400 text-sm mb-3">
-          Un'email per riga. Chi è in elenco deve avere un account su questa app
-          con la stessa email: vedrà la stagione ma non potrà modificarla.
+          Un'email per riga. Chi è in elenco vede la stagione ma non può
+          modificarla: nella sua app non compaiono i bottoni per registrare o
+          cambiare niente, e il permesso di scrittura non ce l'ha nemmeno il
+          server.
         </p>
+        <ol className="text-slate-400 text-xs mb-3 list-decimal pl-5 flex flex-col gap-1">
+          <li>
+            Prima deve registrarsi lui su questa app, con l'email che scrivi qui.
+          </li>
+          <li>Poi la aggiungi qui sotto e salvi.</li>
+          <li>
+            Lui apre Sincronizzazione, la trova sotto «Condivise con te» e
+            preme Scarica qui. Da lì in poi si aggiorna da sola.
+          </li>
+        </ol>
         <textarea
           value={emailCondivise}
           onChange={(e) => setEmailCondivise(e.target.value)}
