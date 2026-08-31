@@ -135,23 +135,6 @@ function intervalliInCampoPerGiocatore(
 }
 
 /**
- * Verifica se un evento (con tempoGioco e minuto) è avvenuto mentre il giocatore era in campo.
- */
-function eraInCampoQuando(
-  intervalli: IntervalloInCampo[] | undefined,
-  tempoGioco: number,
-  minuto: number
-): boolean {
-  if (!intervalli) return false
-  return intervalli.some(
-    (i) =>
-      i.tempoGioco === tempoGioco &&
-      i.minutoInizio <= minuto &&
-      minuto <= i.minutoFine
-  )
-}
-
-/**
  * Calcola le statistiche complete di tutti i giocatori di una stagione.
  * Considera solo le partite con stato 'finita'.
  */
@@ -184,7 +167,11 @@ export function calcolaStatistiche(
   }
 
   for (const partita of partiteFinite) {
-    const eventiPartita = tuttiEventi.filter((e) => e.partitaId === partita.id)
+    // L'ordine di inserimento è l'ordine reale dei fatti: serve per sapere se
+    // un gol è arrivato prima o dopo un cambio segnato nello stesso minuto.
+    const eventiPartita = tuttiEventi
+      .filter((e) => e.partitaId === partita.id)
+      .sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
     const intervalliPerGiocatore = intervalliInCampoPerGiocatore(partita, eventiPartita)
 
     // Presenze: chi era nei convocati
@@ -205,9 +192,27 @@ export function calcolaStatistiche(
       if (minuti > 0) s.partiteGiocate += 1
     }
 
-    // Gol / Assist / Autogol + gol pro/contro in campo
+    // Gol / Assist / Autogol + gol pro/contro in campo.
+    //
+    // Chi è in campo si segue scorrendo gli eventi, non guardando il minuto:
+    // al minuto un portiere sostituito all'intervallo e il suo sostituto
+    // risultano ENTRAMBI in campo al minuto 0 del tempo dopo, e un gol preso
+    // in quell'istante finiva addosso a tutti e due.
+    const inCampo = new Set<number>(partita.titolari)
+    const perTuttiInCampo = (azione: (s: StatsGiocatore) => void) => {
+      for (const gid of inCampo) {
+        const s = stats.get(gid)
+        if (s) azione(s)
+      }
+    }
+
     for (const e of eventiPartita) {
       switch (e.tipo) {
+        case 'cambio': {
+          inCampo.delete(e.giocatoreEsceId)
+          inCampo.add(e.giocatoreEntraId)
+          break
+        }
         case 'gol_fatto': {
           const marc = stats.get(e.giocatoreId)
           if (marc) {
@@ -225,67 +230,31 @@ export function calcolaStatistiche(
             const ass = stats.get(e.assistId)
             if (ass) ass.assist += 1
           }
-          // gol pro per tutti quelli in campo
-          for (const g of rosa) {
-            if (
-              eraInCampoQuando(
-                intervalliPerGiocatore.get(g.id!),
-                e.tempoGioco,
-                e.minuto
-              )
-            ) {
-              const s = stats.get(g.id!)
-              if (s) s.golPro += 1
-            }
-          }
+          // gol pro per tutti quelli in campo in questo momento
+          perTuttiInCampo((s) => {
+            s.golPro += 1
+          })
           break
         }
         case 'autogol_pro': {
           // gol per noi ma nessun marcatore; conta comunque golPro per chi era in campo
-          for (const g of rosa) {
-            if (
-              eraInCampoQuando(
-                intervalliPerGiocatore.get(g.id!),
-                e.tempoGioco,
-                e.minuto
-              )
-            ) {
-              const s = stats.get(g.id!)
-              if (s) s.golPro += 1
-            }
-          }
+          perTuttiInCampo((s) => {
+            s.golPro += 1
+          })
           break
         }
         case 'gol_subito': {
-          for (const g of rosa) {
-            if (
-              eraInCampoQuando(
-                intervalliPerGiocatore.get(g.id!),
-                e.tempoGioco,
-                e.minuto
-              )
-            ) {
-              const s = stats.get(g.id!)
-              if (s) s.golContro += 1
-            }
-          }
+          perTuttiInCampo((s) => {
+            s.golContro += 1
+          })
           break
         }
         case 'autogol_contro': {
           const auto = stats.get(e.giocatoreId)
           if (auto) auto.autogol += 1
-          for (const g of rosa) {
-            if (
-              eraInCampoQuando(
-                intervalliPerGiocatore.get(g.id!),
-                e.tempoGioco,
-                e.minuto
-              )
-            ) {
-              const s = stats.get(g.id!)
-              if (s) s.golContro += 1
-            }
-          }
+          perTuttiInCampo((s) => {
+            s.golContro += 1
+          })
           break
         }
         case 'tiro': {
@@ -302,6 +271,24 @@ export function calcolaStatistiche(
   }
 
   return Array.from(stats.values())
+}
+
+/**
+ * Risultato di una partita, ricavato dai suoi eventi.
+ * Gol nostri = gol_fatto + autogol dell'avversario.
+ * Gol loro = gol_subito + autogol di un nostro.
+ */
+export function risultatoPartita(eventiPartita: Evento[]): {
+  fatti: number
+  subiti: number
+} {
+  let fatti = 0
+  let subiti = 0
+  for (const e of eventiPartita) {
+    if (e.tipo === 'gol_fatto' || e.tipo === 'autogol_pro') fatti += 1
+    else if (e.tipo === 'gol_subito' || e.tipo === 'autogol_contro') subiti += 1
+  }
+  return { fatti, subiti }
 }
 
 /**

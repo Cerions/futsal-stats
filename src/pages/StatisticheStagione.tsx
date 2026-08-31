@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import {
@@ -7,11 +7,13 @@ import {
   conteggiPerZona,
   contaInattive,
   contaTiriConZona,
+  risultatoPartita,
   statistichePerOrigine,
   statistichePerSchema,
 } from '../utils/statistiche'
 import type { StatsGiocatore } from '../utils/statistiche'
 import { nomeCorto } from '../utils/giocatore'
+import { formatData } from '../utils/format'
 import { ruoloShort, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import CampoTiri from '../components/CampoTiri'
@@ -123,6 +125,10 @@ export default function StatisticheStagione() {
     () => db.partite.where('stagioneId').equals(stagioneId).toArray(),
     [stagioneId]
   )
+  const avversari = useLiveQuery(
+    () => db.avversari.where('stagioneId').equals(stagioneId).toArray(),
+    [stagioneId]
+  )
   const eventi = useLiveQuery(async () => {
     if (!partite) return []
     const partiteIds = partite.map((p) => p.id!).filter(Boolean)
@@ -130,24 +136,47 @@ export default function StatisticheStagione() {
     return db.eventi.where('partitaId').anyOf(partiteIds).toArray()
   }, [partite])
 
+  const [parametri, setParametri] = useSearchParams()
   const [colonna, setColonna] = useState<ColonnaOrdinabile>('gol')
   const [discendente, setDiscendente] = useState(true)
   const [vista, setVista] = useState<Vista>('generali')
   const [fronteMappa, setFronteMappa] = useState<Fronte>('nostro')
 
-  if (!stagione || !rosa || !partite || !eventi || !schemi) {
+  if (!stagione || !rosa || !partite || !eventi || !schemi || !avversari) {
     return <div className="p-6">Caricamento...</div>
   }
 
-  const stats = calcolaStatistiche(rosa, partite, eventi)
+  // Le statistiche guardano sempre e solo le partite concluse. Qui si sceglie
+  // se guardarle tutte insieme o una alla volta: l'ambito scelto entra in
+  // tutte e tre le viste, tabelle e mappe comprese.
+  const finite = [...partite]
+    .filter((p) => p.stato === 'finita')
+    .sort((a, b) => b.dataOra - a.dataOra)
+  const partiteFinite = finite.length
 
-  const partiteFinite = partite.filter((p) => p.stato === 'finita').length
+  // L'id sta nell'URL: così il link dalla pagina della partita funziona e la
+  // scelta sopravvive a un ricarico. Un id non più valido torna al totale.
+  const idNellUrl = Number(parametri.get('partita'))
+  const partitaScelta =
+    finite.find((p) => p.id === idNellUrl)?.id ?? null
 
-  // Mappa tiri e xG di stagione: solo dalle partite concluse, come le altre stats
-  const idPartiteFinite = new Set(
-    partite.filter((p) => p.stato === 'finita').map((p) => p.id)
-  )
-  const eventiFiniti = eventi.filter((e) => idPartiteFinite.has(e.partitaId))
+  const ambito =
+    partitaScelta === null ? finite : finite.filter((p) => p.id === partitaScelta)
+  const idAmbito = new Set(ambito.map((p) => p.id))
+  const eventiFiniti = eventi.filter((e) => idAmbito.has(e.partitaId))
+  const partitaCorrente =
+    partitaScelta === null ? null : ambito[0]
+
+  const stats = calcolaStatistiche(rosa, ambito, eventiFiniti)
+
+  const nomeAvversario = (id: number) =>
+    avversari.find((a) => a.id === id)?.nome ?? '???'
+  const etichettaPartita = (p: (typeof finite)[number]) => {
+    const { fatti, subiti } = risultatoPartita(
+      eventi.filter((e) => e.partitaId === p.id)
+    )
+    return `${formatData(p.dataOra)} · ${nomeAvversario(p.avversarioId)} · ${fatti}-${subiti}`
+  }
   const conteggiZone = conteggiPerZona(eventiFiniti)
   const xgStagione = xgTotale(eventiFiniti)
   // Fronte avversario: mappa e xGA di quello che ci hanno tirato addosso
@@ -238,9 +267,52 @@ export default function StatisticheStagione() {
       </Link>
       <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
       <p className="text-sm text-slate-400 mb-4">
-        Statistiche • {stagione.nome} • {partiteFinite}{' '}
-        {partiteFinite === 1 ? 'partita giocata' : 'partite giocate'}
+        Statistiche • {stagione.nome} •{' '}
+        {partitaCorrente
+          ? etichettaPartita(partitaCorrente)
+          : `${partiteFinite} ${
+              partiteFinite === 1 ? 'partita giocata' : 'partite giocate'
+            }`}
       </p>
+
+      {/* Selettore ambito: tutta la stagione o una partita sola */}
+      {partiteFinite > 0 && (
+        <div className="mb-3">
+          <select
+            value={partitaScelta ?? ''}
+            onChange={(e) => {
+              const v = e.target.value
+              const nuovi = new URLSearchParams(parametri)
+              if (v === '') nuovi.delete('partita')
+              else nuovi.set('partita', v)
+              setParametri(nuovi, { replace: true })
+            }}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold"
+          >
+            <option value="">
+              Tutta la stagione ({partiteFinite}{' '}
+              {partiteFinite === 1 ? 'partita' : 'partite'})
+            </option>
+            {finite.map((p) => (
+              <option key={p.id} value={p.id}>
+                {etichettaPartita(p)}
+              </option>
+            ))}
+          </select>
+          {partitaCorrente && (
+            <p className="text-xs text-slate-500 mt-1">
+              Stai guardando una partita sola.{' '}
+              <Link
+                to={`/partita/${partitaCorrente.id}`}
+                className="text-emerald-400 underline"
+              >
+                Aprila
+              </Link>{' '}
+              per il tabellone e il log eventi.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Selettore vista */}
       {partiteFinite > 0 && (
@@ -597,7 +669,7 @@ export default function StatisticheStagione() {
           {/* Mappa tiri di stagione */}
           <section className="mt-6">
             <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-              Mappa tiri stagione
+              {partitaCorrente ? 'Mappa tiri della partita' : 'Mappa tiri stagione'}
             </h2>
             <div className="grid grid-cols-2 gap-2 mb-2 max-w-sm">
               <button

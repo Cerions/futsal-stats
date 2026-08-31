@@ -33,6 +33,7 @@ import {
   conteggiPerZona,
   contaInattive,
   contaTiriConZona,
+  risultatoPartita,
 } from '../utils/statistiche'
 import {
   ESITI_TIRO,
@@ -651,12 +652,7 @@ function Live({
   // Risultato calcolato dagli eventi
   // Gol nostri = gol_fatto + autogol_pro (avversario in proprio)
   // Gol loro = gol_subito + autogol_contro (nostro in proprio)
-  const golFatti = eventi.filter(
-    (e) => e.tipo === 'gol_fatto' || e.tipo === 'autogol_pro'
-  ).length
-  const golSubiti = eventi.filter(
-    (e) => e.tipo === 'gol_subito' || e.tipo === 'autogol_contro'
-  ).length
+  const { fatti: golFatti, subiti: golSubiti } = risultatoPartita(eventi)
 
   // ----- STATE: modali -----
   const [showGolSubito, setShowGolSubito] = useState(false)
@@ -1335,14 +1331,22 @@ function Live({
         </>
       )}
 
-      {/* Partita finita: bottone modifica a tutta larghezza */}
-      {finita && !soloLettura && (
-        <div className="mb-4">
+      {/* Partita finita: modifica e statistiche di questa partita */}
+      {finita && (
+        <div className="flex gap-2 mb-4">
+          {!soloLettura && (
+            <Link
+              to={`/partita/${partita.id}/modifica`}
+              className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
+            >
+              Modifica partita
+            </Link>
+          )}
           <Link
-            to={`/partita/${partita.id}/modifica`}
-            className="block w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
+            to={`/stagione/${stagioneId}/statistiche?partita=${partita.id}`}
+            className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-semibold text-center"
           >
-            Modifica partita
+            📊 Statistiche
           </Link>
         </div>
       )}
