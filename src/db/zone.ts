@@ -218,6 +218,15 @@ export function origineRichiedeSchema(o: OrigineTiro): boolean {
   return MAPPA_ORIGINI.get(o)?.richiedeSchema ?? false
 }
 
+/**
+ * Cosa conta come «tiro in porta»: solo le conclusioni che la porta l'hanno
+ * presa davvero, cioè gol e parate.
+ *
+ * Fuori no. Palo e traversa nemmeno: il legno non è la porta, e infatti anche
+ * le convenzioni professionali (Opta e simili) li contano a parte. Ribattuto
+ * no di sicuro: la palla l'ha presa un difensore, non si sa dove sarebbe
+ * finita.
+ */
 export const ESITI_TIRO: { value: EsitoTiro; label: string; inPorta: boolean }[] = [
   { value: 'parato', label: 'Parato', inPorta: true },
   { value: 'fuori', label: 'Fuori', inPorta: false },

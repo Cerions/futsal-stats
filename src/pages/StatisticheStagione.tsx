@@ -6,7 +6,7 @@ import {
   calcolaStatistiche,
   conteggiPerZona,
   contaInattive,
-  contaTiriConZona,
+  contaTiri,
   risultatoPartita,
   statistichePerOrigine,
   statistichePerSchema,
@@ -182,11 +182,12 @@ export default function StatisticheStagione() {
   // Fronte avversario: mappa e xGA di quello che ci hanno tirato addosso
   const conteggiZoneSubiti = conteggiPerZona(eventiFiniti, 'loro')
   const xgaStagione = xgTotale(eventiFiniti, 'loro')
-  const tiriSubiti = contaTiriConZona(eventiFiniti, 'loro')
+  const tiriNostri = contaTiri(eventiFiniti, 'nostro')
+  const tiriLoro = contaTiri(eventiFiniti, 'loro')
   const golSubitiTotali = eventiFiniti.filter(
     (e) => e.tipo === 'gol_subito' || e.tipo === 'autogol_contro'
   ).length
-  const tiriStagione = stats.reduce((t, s) => t + s.tiri, 0)
+
   const golSenzaZona = stats.reduce((t, s) => t + s.golSenzaZona, 0)
   const perOrigine = statistichePerOrigine(eventiFiniti)
   const perSchema = statistichePerSchema(eventiFiniti, schemi)
@@ -563,7 +564,12 @@ export default function StatisticheStagione() {
           <div className="grid grid-cols-3 gap-2 mb-4">
             <div className="bg-slate-800 rounded-lg p-3 text-center">
               <div className="text-xs text-slate-400">Tiri</div>
-              <div className="text-xl font-bold tabular-nums">{tiriStagione}</div>
+              <div className="text-xl font-bold tabular-nums">
+                {tiriNostri.totali}
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">
+                {tiriNostri.inPorta} in porta
+              </div>
             </div>
             <div className="bg-slate-800 rounded-lg p-3 text-center">
               <div className="text-xs text-slate-400">xG</div>
@@ -583,7 +589,12 @@ export default function StatisticheStagione() {
           <div className="grid grid-cols-3 gap-2 mb-4">
             <div className="bg-slate-800 rounded-lg p-3 text-center">
               <div className="text-xs text-slate-400">Tiri subiti</div>
-              <div className="text-xl font-bold tabular-nums">{tiriSubiti}</div>
+              <div className="text-xl font-bold tabular-nums">
+                {tiriLoro.totali}
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">
+                {tiriLoro.inPorta} in porta
+              </div>
             </div>
             <div className="bg-slate-800 rounded-lg p-3 text-center">
               <div className="text-xs text-slate-400">xGA</div>
@@ -769,9 +780,9 @@ export default function StatisticheStagione() {
             <p>
               <strong className="text-slate-400">Tiri</strong>: conclusioni
               totali (un gol è un tiro riuscito) •{' '}
-              <strong className="text-slate-400">TP</strong>: tiri in porta (gol
-              e tiri parati) • <strong className="text-slate-400">Conv.</strong>:
-              gol su tiri
+              <strong className="text-slate-400">TP</strong>: tiri in porta
+              (gol e tiri parati) •{' '}
+              <strong className="text-slate-400">Conv.</strong>: gol su tiri
             </p>
             <p>
               <strong className="text-slate-400">xG</strong>: gol attesi in base

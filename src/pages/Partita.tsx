@@ -32,6 +32,7 @@ import CampoTiri from '../components/CampoTiri'
 import {
   conteggiPerZona,
   contaInattive,
+  contaTiri,
   contaTiriConZona,
   risultatoPartita,
 } from '../utils/statistiche'
@@ -693,9 +694,8 @@ function Live({
   // ----- Tiri e xG della partita -----
   const conteggiZone = conteggiPerZona(eventi)
   const xgPartita = xgTotale(eventi)
-  const tiriTotali = eventi.filter(
-    (e) => e.tipo === 'tiro' || e.tipo === 'gol_fatto'
-  ).length
+  const tiriNostri = contaTiri(eventi, 'nostro')
+  const tiriLoro = contaTiri(eventi, 'loro')
   const tiriConZona = eventi.filter(
     (e) => e.tipo === 'tiro' || (e.tipo === 'gol_fatto' && e.zona !== undefined)
   ).length
@@ -1146,48 +1146,64 @@ function Live({
           </div>
         </div>
 
-        {/* Riga xG */}
-        {(tiriTotali > 0 || tiriSubitiConZona > 0 || inattiveBattute > 0) && (
-          <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3 flex-wrap text-xs text-slate-400">
-            <span>
-              Tiri <span className="font-semibold text-slate-200">{tiriTotali}</span>
-            </span>
-            <span className="text-slate-600">•</span>
-            <span>
-              xG{' '}
-              <span className="font-semibold text-emerald-400 tabular-nums">
-                {formatXG(xgPartita)}
+        {/* Riepilogo conclusioni: una riga per fronte */}
+        {(tiriNostri.totali > 0 || tiriLoro.totali > 0 || inattiveBattute > 0) && (
+          <div className="mt-3 pt-3 border-t border-slate-700/60 flex flex-col gap-1 text-xs text-slate-400">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <span className="text-slate-500 w-10 text-right">Noi</span>
+              <span>
+                Tiri <span className="font-semibold text-slate-200">{tiriNostri.totali}</span>
               </span>
-            </span>
-            {tiriSubitiConZona > 0 && (
-              <>
-                <span className="text-slate-600">•</span>
-                <span>
-                  xGA{' '}
-                  <span className="font-semibold text-red-400 tabular-nums">
-                    {formatXG(xgaPartita)}
+              <span className="text-slate-600">•</span>
+              <span>
+                in porta{' '}
+                <span className="font-semibold text-slate-200">{tiriNostri.inPorta}</span>
+              </span>
+              <span className="text-slate-600">•</span>
+              <span>
+                xG{' '}
+                <span className="font-semibold text-emerald-400 tabular-nums">
+                  {formatXG(xgPartita)}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <span className="text-slate-500 w-10 text-right">Loro</span>
+              <span>
+                Tiri <span className="font-semibold text-slate-200">{tiriLoro.totali}</span>
+              </span>
+              <span className="text-slate-600">•</span>
+              <span>
+                in porta{' '}
+                <span className="font-semibold text-slate-200">{tiriLoro.inPorta}</span>
+              </span>
+              <span className="text-slate-600">•</span>
+              <span>
+                xGA{' '}
+                <span className="font-semibold text-red-400 tabular-nums">
+                  {formatXG(xgaPartita)}
+                </span>
+              </span>
+            </div>
+            {(inattiveBattute > 0 || tiriConZona < tiriNostri.totali) && (
+              <div className="flex items-center justify-center gap-2 flex-wrap pt-0.5">
+                {inattiveBattute > 0 && (
+                  <span>
+                    Inattive{' '}
+                    <span className="font-semibold text-slate-200">
+                      {inattiveBattute}
+                    </span>
                   </span>
-                </span>
-              </>
-            )}
-            {inattiveBattute > 0 && (
-              <>
-                <span className="text-slate-600">•</span>
-                <span>
-                  Inattive{' '}
-                  <span className="font-semibold text-slate-200">
-                    {inattiveBattute}
+                )}
+                {inattiveBattute > 0 && tiriConZona < tiriNostri.totali && (
+                  <span className="text-slate-600">•</span>
+                )}
+                {tiriConZona < tiriNostri.totali && (
+                  <span className="text-amber-400/80">
+                    {tiriNostri.totali - tiriConZona} senza zona
                   </span>
-                </span>
-              </>
-            )}
-            {tiriConZona < tiriTotali && (
-              <>
-                <span className="text-slate-600">•</span>
-                <span className="text-amber-400/80">
-                  {tiriTotali - tiriConZona} senza zona
-                </span>
-              </>
+                )}
+              </div>
             )}
           </div>
         )}

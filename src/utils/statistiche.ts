@@ -320,6 +320,42 @@ export function conteggiPerZona(
   return mappa
 }
 
+export interface ConteggioTiri {
+  /** tutte le conclusioni, gol compresi (un gol è un tiro riuscito) */
+  totali: number
+  /** quelle che la porta l'hanno presa: gol e parate */
+  inPorta: number
+}
+
+/**
+ * Conclusioni totali e in porta, per fronte. A differenza dell'xG conta
+ * anche quelle senza zona registrata: un tiro resta un tiro.
+ */
+export function contaTiri(eventi: Evento[], fronte: Fronte = 'nostro'): ConteggioTiri {
+  let totali = 0
+  let inPorta = 0
+  for (const e of eventi) {
+    if (fronte === 'nostro') {
+      if (e.tipo === 'gol_fatto') {
+        totali += 1
+        inPorta += 1
+      } else if (e.tipo === 'tiro') {
+        totali += 1
+        if (esitoInPorta(e.esito)) inPorta += 1
+      }
+    } else {
+      if (e.tipo === 'gol_subito') {
+        totali += 1
+        inPorta += 1
+      } else if (e.tipo === 'tiro_subito') {
+        totali += 1
+        if (esitoInPorta(e.esito)) inPorta += 1
+      }
+    }
+  }
+  return { totali, inPorta }
+}
+
 /** Quante conclusioni hanno una zona registrata, per fronte. */
 export function contaTiriConZona(eventi: Evento[], fronte: Fronte = 'nostro'): number {
   return eventi.filter((e) => zonaDiTiro(e, fronte) !== null).length
