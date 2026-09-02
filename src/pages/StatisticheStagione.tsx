@@ -17,6 +17,7 @@ import { formatData } from '../utils/format'
 import { ruoloShort, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import CampoTiri from '../components/CampoTiri'
+import SezioneGrafici from '../components/grafici/SezioneGrafici'
 import {
   formatXG,
   inattivaIcona,
@@ -45,7 +46,7 @@ type ColonnaOrdinabile =
   | 'xGDiff'
   | 'conversione'
 
-type Vista = 'generali' | 'tiri' | 'inattive'
+type Vista = 'generali' | 'tiri' | 'grafici' | 'inattive'
 
 /** Percentuale realizzativa: gol su tiri. -1 se non ha mai tirato. */
 function conversione(s: StatsGiocatore): number {
@@ -321,6 +322,7 @@ export default function StatisticheStagione() {
           {([
             { v: 'generali' as Vista, label: 'Generali' },
             { v: 'tiri' as Vista, label: 'Tiri & xG' },
+            { v: 'grafici' as Vista, label: 'Grafici' },
             { v: 'inattive' as Vista, label: 'Palle inattive' },
           ]).map(({ v, label }) => (
             <button
@@ -343,6 +345,15 @@ export default function StatisticheStagione() {
           Nessuna partita conclusa. Le statistiche appariranno dopo la prima
           partita terminata.
         </p>
+      ) : vista === 'grafici' ? (
+        <SezioneGrafici
+          partite={ambito}
+          eventi={eventiFiniti}
+          rosa={rosa}
+          stats={stats}
+          nomeAvversario={nomeAvversario}
+          nomeSquadra={nomeSquadra(stagione)}
+        />
       ) : vista === 'inattive' ? (
         <>
           {/* Resa per tipo di situazione */}
