@@ -107,6 +107,12 @@ export function pesoZona(z: ZonaTiro): number {
   return MAPPA_ZONE.get(z)?.peso ?? 0
 }
 
+/**
+ * Da che parte si guarda una conclusione: quelle che facciamo noi
+ * ('nostro') o quelle che ci fanno gli avversari ('loro', da cui l'xGA).
+ */
+export type Fronte = 'nostro' | 'loro'
+
 export interface DefinizioneOrigine {
   value: OrigineTiro
   label: string
@@ -177,7 +183,11 @@ export function inattivaIcona(t: TipoInattiva): string {
   return MAPPA_INATTIVE.get(t)?.icona ?? ''
 }
 
-/** Le origini sono l'azione di gioco aperto più le quattro palle inattive. */
+/**
+ * Le origini: gioco aperto, contropiede, più le quattro palle inattive.
+ * Solo le inattive hanno schemi; azione e contropiede no, sono gioco in
+ * movimento e non c'è niente di preparato da scegliere.
+ */
 export const ORIGINI_TIRO: DefinizioneOrigine[] = [
   {
     value: 'azione',
@@ -187,15 +197,53 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
     richiedeBattuta: false,
     richiedeSchema: false,
   },
+  {
+    value: 'contropiede',
+    label: 'Contropiede',
+    labelCorta: 'Contropiede',
+    icona: '🏃',
+    richiedeBattuta: false,
+    richiedeSchema: false,
+  },
   ...TIPI_INATTIVA.map((t) => ({ ...t, richiedeSchema: true })),
 ]
 
 const MAPPA_ORIGINI = new Map(ORIGINI_TIRO.map((o) => [o.value, o]))
 
-/** Origine di un evento: gli eventi vecchi senza il campo sono azioni. */
+/**
+ * Le origini che ha senso mostrare, per fronte.
+ *
+ * Delle conclusioni che subiamo registriamo solo se sono nate da contropiede:
+ * mentre segui la partita non c'è tempo per classificare anche le loro palle
+ * inattive. Quindi da quel lato esistono due sole categorie, e «azione» vuol
+ * dire «tutto il resto» — elencare corner e punizioni a zero racconterebbe una
+ * cosa falsa, cioè che non ne hanno mai battute.
+ */
+export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
+  if (fronte === 'nostro') return ORIGINI_TIRO
+  const azione = MAPPA_ORIGINI.get('azione')!
+  const contropiede = MAPPA_ORIGINI.get('contropiede')!
+  return [
+    { ...azione, label: 'Resto del gioco', labelCorta: 'Resto' },
+    contropiede,
+  ]
+}
+
+/**
+ * Origine di una conclusione, da entrambi i fronti. Gli eventi registrati
+ * prima che il campo esistesse non ce l'hanno: contano come azione, che è la
+ * situazione di gran lunga più comune.
+ */
 export function origineDi(e: Evento): OrigineTiro {
-  if (e.tipo === 'tiro' || e.tipo === 'gol_fatto') return e.origine ?? 'azione'
-  return 'azione'
+  switch (e.tipo) {
+    case 'tiro':
+    case 'gol_fatto':
+    case 'tiro_subito':
+    case 'gol_subito':
+      return e.origine ?? 'azione'
+    default:
+      return 'azione'
+  }
 }
 
 export function origineLabel(o: OrigineTiro): string {
@@ -216,6 +264,14 @@ export function origineRichiedeBattuta(o: OrigineTiro): boolean {
 
 export function origineRichiedeSchema(o: OrigineTiro): boolean {
   return MAPPA_ORIGINI.get(o)?.richiedeSchema ?? false
+}
+
+/**
+ * L'origine letta come palla inattiva, o null se non lo è.
+ * Azione e contropiede non hanno schemi: per loro non c'è niente da filtrare.
+ */
+export function origineComeInattiva(o: OrigineTiro): TipoInattiva | null {
+  return MAPPA_INATTIVE.has(o as TipoInattiva) ? (o as TipoInattiva) : null
 }
 
 /**
@@ -241,12 +297,6 @@ export function esitoLabel(e: EsitoTiro): string {
 export function esitoInPorta(e: EsitoTiro): boolean {
   return ESITI_TIRO.find((x) => x.value === e)?.inPorta ?? false
 }
-
-/**
- * Da che parte si guarda una conclusione: quelle che facciamo noi
- * ('nostro') o quelle che ci fanno gli avversari ('loro', da cui l'xGA).
- */
-export type Fronte = 'nostro' | 'loro'
 
 /**
  * Un evento conta come tiro se è un 'tiro' esplicito oppure un gol

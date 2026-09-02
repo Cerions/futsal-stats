@@ -22,6 +22,7 @@ import {
   ORIGINI_TIRO,
   TIPI_INATTIVA,
   ZONE_TIRO,
+  origineComeInattiva,
   origineRichiedeBattuta,
   origineRichiedeSchema,
 } from '../db/zone'
@@ -284,6 +285,7 @@ export default function ModificaPartita() {
           ...base,
           tipo: 'gol_subito',
           zona: zonaNuova === '' ? undefined : zonaNuova,
+          origine: origineNuova,
         })
         break
       case 'tiro_subito': {
@@ -293,6 +295,7 @@ export default function ModificaPartita() {
           tipo: 'tiro_subito',
           zona: zonaNuova,
           esito: esitoNuovo,
+          origine: origineNuova,
         })
         break
       }
@@ -339,11 +342,13 @@ export default function ModificaPartita() {
         // niente giocatore nostro: sblocchiamo il salvataggio
         setEditMarcatore(0)
         setEditZona(e.zona ?? '')
+        setEditOrigine(e.origine ?? 'azione')
         break
       case 'tiro_subito':
         setEditMarcatore(0)
         setEditZona(e.zona)
         setEditEsito(e.esito)
+        setEditOrigine(e.origine ?? 'azione')
         break
       case 'tiro':
         setEditMarcatore(e.giocatoreId)
@@ -404,12 +409,14 @@ export default function ModificaPartita() {
     } else if (eventoInModifica.tipo === 'gol_subito') {
       await db.eventi.update(eventoInModifica.id!, {
         zona: editZona === '' ? undefined : editZona,
+        origine: editOrigine,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro_subito') {
       if (editZona === '') return
       await db.eventi.update(eventoInModifica.id!, {
         zona: editZona,
         esito: editEsito,
+        origine: editOrigine,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'inattiva') {
       await db.eventi.update(eventoInModifica.id!, {
@@ -446,6 +453,9 @@ export default function ModificaPartita() {
     tipoInModifica === 'gol_fatto' || tipoInModifica === 'gol_subito'
   const editHaEsito = tipoInModifica === 'tiro' || tipoInModifica === 'tiro_subito'
   const editHaOrigine = tipoInModifica === 'gol_fatto' || tipoInModifica === 'tiro'
+  /** Sui subiti si sceglie l'origine, ma non schema né punto di battuta. */
+  const editHaSoloOrigine =
+    tipoInModifica === 'gol_subito' || tipoInModifica === 'tiro_subito'
 
   const richiedeGiocatore =
     tipoNuovo === 'gol_fatto' ||
@@ -462,15 +472,15 @@ export default function ModificaPartita() {
   // subite registriamo solo da dove sono partite e com'è finita.
   // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
   const mostraOrigine = tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro'
+  const mostraSoloOrigine =
+    tipoNuovo === 'gol_subito' || tipoNuovo === 'tiro_subito'
   const mostraSchemaNuovo =
     tipoNuovo === 'inattiva' || (mostraOrigine && origineRichiedeSchema(origineNuova))
   /** Il tipo di palla inattiva a cui appartengono gli schemi da mostrare. */
   const tipoSchemaNuovo: TipoInattiva | null =
     tipoNuovo === 'inattiva'
       ? situazioneNuova
-      : origineNuova === 'azione'
-      ? null
-      : origineNuova
+      : origineComeInattiva(origineNuova)
   const mostraBattutaNuova = mostraOrigine && origineRichiedeBattuta(origineNuova)
 
   // Per la data: input datetime-local vuole "YYYY-MM-DDTHH:mm"
@@ -686,6 +696,20 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {mostraSoloOrigine && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={origineNuova === 'contropiede'}
+                onChange={(e) =>
+                  setOrigineNuova(e.target.checked ? 'contropiede' : 'azione')
+                }
+                className="w-4 h-4"
+              />
+              🏃 Su contropiede
+            </label>
+          )}
+
           {mostraOrigine && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
@@ -891,25 +915,41 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {editHaSoloOrigine && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editOrigine === 'contropiede'}
+                onChange={(e) =>
+                  setEditOrigine(e.target.checked ? 'contropiede' : 'azione')
+                }
+                className="w-4 h-4"
+              />
+              🏃 Su contropiede
+            </label>
+          )}
+
+          {editHaOrigine && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Come nasce
+              </label>
+              <select
+                value={editOrigine}
+                onChange={(e) => setEditOrigine(e.target.value as OrigineTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {ORIGINI_TIRO.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.icona} {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {editHaOrigine && (
             <>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">
-                  Come nasce
-                </label>
-                <select
-                  value={editOrigine}
-                  onChange={(e) => setEditOrigine(e.target.value as OrigineTiro)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
-                >
-                  {ORIGINI_TIRO.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.icona} {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {origineRichiedeBattuta(editOrigine) && (
                 <div>
                   <label className="block text-sm text-slate-400 mb-1">
@@ -959,9 +999,7 @@ export default function ModificaPartita() {
                   tipo={
                     eventoInModifica?.tipo === 'inattiva'
                       ? editSituazione
-                      : editOrigine === 'azione'
-                      ? null
-                      : editOrigine
+                      : origineComeInattiva(editOrigine)
                   }
                 />
               </div>

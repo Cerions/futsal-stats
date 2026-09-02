@@ -10,6 +10,7 @@ import type {
 import {
   eGolConZona,
   esitoInPorta,
+  origineComeInattiva,
   origineDi,
   ORIGINI_TIRO,
   pesoZona,
@@ -376,18 +377,24 @@ export interface StatsOrigine {
  * Resa delle conclusioni divise per come sono nate.
  * Gli eventi senza il campo origine contano come azione di gioco aperto.
  */
-export function statistichePerOrigine(eventi: Evento[]): StatsOrigine[] {
+export function statistichePerOrigine(
+  eventi: Evento[],
+  fronte: Fronte = 'nostro'
+): StatsOrigine[] {
   const mappa = new Map<OrigineTiro, StatsOrigine>(
     ORIGINI_TIRO.map((o) => [o.value, { origine: o.value, tiri: 0, gol: 0, xG: 0 }])
   )
+  const tipoGol = fronte === 'nostro' ? 'gol_fatto' : 'gol_subito'
+  const tipoTiro = fronte === 'nostro' ? 'tiro' : 'tiro_subito'
 
   for (const e of eventi) {
-    if (e.tipo !== 'tiro' && e.tipo !== 'gol_fatto') continue
+    if (e.tipo !== tipoTiro && e.tipo !== tipoGol) continue
     const s = mappa.get(origineDi(e))
     if (!s) continue
     s.tiri += 1
-    if (e.tipo === 'gol_fatto') s.gol += 1
-    if (e.zona !== undefined) s.xG += pesoZona(e.zona)
+    if (e.tipo === tipoGol) s.gol += 1
+    const zona = zonaDiTiro(e, fronte)
+    if (zona !== null) s.xG += pesoZona(zona)
   }
 
   return Array.from(mappa.values())
@@ -457,9 +464,10 @@ export function statistichePerSchema(
     if (e.tipo === 'inattiva') {
       riga(e.situazione, e.schemaId).battute += 1
     } else if (e.tipo === 'tiro' || e.tipo === 'gol_fatto') {
-      const origine = origineDi(e)
-      if (origine === 'azione') continue
-      const r = riga(origine, e.schemaId)
+      // Solo le palle inattive hanno schemi: azione e contropiede no.
+      const situazione = origineComeInattiva(origineDi(e))
+      if (situazione === null) continue
+      const r = riga(situazione, e.schemaId)
       r.tiri += 1
       if (e.tipo === 'gol_fatto') r.gol += 1
       if (e.zona !== undefined) r.xG += pesoZona(e.zona)

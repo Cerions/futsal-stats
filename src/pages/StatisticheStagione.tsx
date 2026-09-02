@@ -24,10 +24,12 @@ import {
   inattivaLabel,
   origineIcona,
   origineLabel,
+  originiPerFronte,
   xgTotale,
   ZONE_TIRO,
 } from '../db/zone'
 import type { Fronte } from '../db/zone'
+import type { OrigineTiro } from '../db/schema'
 
 type ColonnaOrdinabile =
   | 'giocatore'
@@ -142,6 +144,7 @@ export default function StatisticheStagione() {
   const [discendente, setDiscendente] = useState(true)
   const [vista, setVista] = useState<Vista>('generali')
   const [fronteMappa, setFronteMappa] = useState<Fronte>('nostro')
+  const [fronteOrigini, setFronteOrigini] = useState<Fronte>('nostro')
 
   if (!stagione || !rosa || !partite || !eventi || !schemi || !avversari) {
     return <div className="p-6">Caricamento...</div>
@@ -190,7 +193,14 @@ export default function StatisticheStagione() {
   ).length
 
   const golSenzaZona = stats.reduce((t, s) => t + s.golSenzaZona, 0)
-  const perOrigine = statistichePerOrigine(eventiFiniti)
+  // Del fronte avversario esistono solo due categorie: le altre non le
+  // registriamo, e mostrarle a zero direbbe che non ne hanno mai battute.
+  const definizioniOrigine = originiPerFronte(fronteOrigini)
+  const perOrigine = statistichePerOrigine(eventiFiniti, fronteOrigini).filter((o) =>
+    definizioniOrigine.some((d) => d.value === o.origine)
+  )
+  const etichettaOrigine = (o: OrigineTiro) =>
+    definizioniOrigine.find((d) => d.value === o)?.label ?? origineLabel(o)
   const perSchema = statistichePerSchema(eventiFiniti, schemi)
   const inattiveStagione = contaInattive(eventiFiniti)
 
@@ -360,6 +370,28 @@ export default function StatisticheStagione() {
           <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
             Da cosa nascono le conclusioni
           </h2>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {(
+              [
+                ['nostro', 'Nostre'],
+                ['loro', 'Subite'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => setFronteOrigini(v)}
+                className={`py-1.5 rounded-lg text-sm font-semibold ${
+                  fronteOrigini === v
+                    ? v === 'nostro'
+                      ? 'bg-emerald-600'
+                      : 'bg-red-600'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="overflow-x-auto -mx-4 px-4 mb-6">
             <table className="w-full text-sm">
               <thead>
@@ -379,7 +411,7 @@ export default function StatisticheStagione() {
                   >
                     <td className="px-2 py-2">
                       <span className="mr-1">{origineIcona(o.origine)}</span>
-                      {origineLabel(o.origine)}
+                      {etichettaOrigine(o.origine)}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums">{o.tiri}</td>
                     <td className="px-2 py-2 text-right tabular-nums font-semibold">

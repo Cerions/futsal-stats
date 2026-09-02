@@ -109,12 +109,11 @@ export type EsitoTiro = 'parato' | 'fuori' | 'palo' | 'ribattuto'
 export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
 
 /**
- * Da cosa nasce la conclusione. 'azione' è il default: se il campo manca
- * su un evento vecchio, va letto come azione di gioco aperto.
- * Tutte le altre origini sono palle inattive e possono portare uno schema;
- * punizione e rimessa portano anche la zona da cui è stata battuta la palla.
+ * Come nasce una conclusione: gioco costruito, ripartenza, oppure una delle
+ * quattro palle inattive. Il contropiede sta accanto all'azione perché è
+ * gioco in movimento, non una palla ferma: non ha schemi né punto di battuta.
  */
-export type OrigineTiro = 'azione' | TipoInattiva
+export type OrigineTiro = 'azione' | 'contropiede' | TipoInattiva
 
 /**
  * Schema di palla inattiva, definito a mano nel setup della stagione
@@ -155,8 +154,8 @@ export type Evento =
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'inizio_tempo'; tempo: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'fine_tempo'; tempo: number }
   | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_fatto'; giocatoreId: number; assistId?: number; zona?: ZonaTiro } & DatiOrigine)
-  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_subito'; zona?: ZonaTiro; noteGiocatoreAvv?: string }
-  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro_subito'; zona: ZonaTiro; esito: EsitoTiro; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_subito'; zona?: ZonaTiro; origine?: OrigineTiro; noteGiocatoreAvv?: string }
+  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro_subito'; zona: ZonaTiro; esito: EsitoTiro; origine?: OrigineTiro; noteGiocatoreAvv?: string }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_pro'; noteGiocatoreAvv?: string }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_contro'; giocatoreId: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'cambio'; giocatoreEntraId: number; giocatoreEsceId: number }

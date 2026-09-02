@@ -3,7 +3,7 @@ import type { Evento, Giocatore, Partita } from '../../db/schema'
 import type { StatsGiocatore } from '../../utils/statistiche'
 import { statistichePerOrigine } from '../../utils/statistiche'
 import { andamentoPartita, perFasce, rendimentoPerPartita } from '../../utils/grafici'
-import { formatXG, origineIcona, origineLabelCorta } from '../../db/zone'
+import { formatXG, originiPerFronte } from '../../db/zone'
 import { nomeCorto } from '../../utils/giocatore'
 import AndamentoXG from './AndamentoXG'
 import PerPartita from './PerPartita'
@@ -55,6 +55,7 @@ export default function SezioneGrafici({
   nomeSquadra,
 }: Props) {
   const [misuraFasce, setMisuraFasce] = useState<'gol' | 'conclusioni'>('gol')
+  const [fronteOrigini, setFronteOrigini] = useState<'nostro' | 'loro'>('nostro')
 
   if (partite.length === 0) {
     return <NienteDati testo="Nessuna partita conclusa: i grafici arrivano dopo la prima." />
@@ -73,9 +74,14 @@ export default function SezioneGrafici({
   const fasce = perFasce(partite, eventi)
 
   // ----- 3. origini -----
-  const origini = statistichePerOrigine(eventi)
-    .filter((o) => o.tiri > 0)
+  const definizioniOrigine = originiPerFronte(fronteOrigini)
+  const origini = statistichePerOrigine(eventi, fronteOrigini)
+    .filter((o) => o.tiri > 0 && definizioniOrigine.some((d) => d.value === o.origine))
     .sort((a, b) => b.tiri - a.tiri)
+  const etichettaOrigine = (o: (typeof origini)[number]) => {
+    const d = definizioniOrigine.find((x) => x.value === o.origine)
+    return `${d?.icona ?? ''} ${d?.labelCorta ?? o.origine}`.trim()
+  }
 
   // ----- 4. giocatori -----
   const giocanti = stats
@@ -156,21 +162,47 @@ export default function SezioneGrafici({
         titolo="Da dove nascono le conclusioni"
         sottotitolo="Lunghezza della barra: quante conclusioni. La parte piena sono i gol, alla punta l'xG prodotto."
       >
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {(
+            [
+              ['nostro', 'Nostre'],
+              ['loro', 'Subite'],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setFronteOrigini(v)}
+              className={`py-1.5 rounded-lg text-sm font-semibold ${
+                fronteOrigini === v
+                  ? v === 'nostro'
+                    ? 'bg-emerald-600'
+                    : 'bg-red-600'
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {origini.length === 0 ? (
           <NienteDati testo="Nessuna conclusione registrata." />
         ) : (
           <>
             <Legenda
               voci={[
-                { colore: COLORI.nostro, label: 'Gol' },
+                {
+                  colore: fronteOrigini === 'nostro' ? COLORI.nostro : COLORI.loro,
+                  label: fronteOrigini === 'nostro' ? 'Gol' : 'Gol subiti',
+                },
                 { colore: COLORI.neutro, label: 'Altre conclusioni' },
               ]}
             />
             <BarreOrizzontali
+              colore={fronteOrigini === 'nostro' ? COLORI.nostro : COLORI.loro}
               vuoto="Nessuna conclusione registrata."
               righe={origini.map((o) => ({
                 chiave: o.origine,
-                etichetta: `${origineIcona(o.origine)} ${origineLabelCorta(o.origine)}`,
+                etichetta: etichettaOrigine(o),
                 valore: o.gol,
                 resto: o.tiri - o.gol,
                 nota: `${o.tiri} · xG ${formatXG(o.xG)}`,

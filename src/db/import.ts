@@ -244,6 +244,7 @@ function rimappaEvento(
         ...base,
         tipo: 'gol_subito',
         zona: e.zona,
+        origine: e.origine,
         noteGiocatoreAvv: e.noteGiocatoreAvv,
       }
     case 'tiro_subito':
@@ -252,6 +253,7 @@ function rimappaEvento(
         tipo: 'tiro_subito',
         zona: e.zona,
         esito: e.esito,
+        origine: e.origine,
         noteGiocatoreAvv: e.noteGiocatoreAvv,
       }
     case 'autogol_pro':

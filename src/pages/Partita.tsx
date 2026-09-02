@@ -45,6 +45,7 @@ import {
   inattivaLabel,
   origineLabel,
   origineRichiedeBattuta,
+  origineComeInattiva,
   origineRichiedeSchema,
   pesoZona,
   xgTotale,
@@ -680,6 +681,10 @@ function Live({
   // Stesso principio del flusso nostro, ma senza giocatore: degli avversari
   // ci interessa solo da dove hanno concluso e com'è finita.
   const [passoSubito, setPassoSubito] = useState<'zona' | 'esito'>('zona')
+  // Delle conclusioni loro non teniamo l'origine completa: l'unica cosa che
+  // vale la pena registrare in fretta, mentre segui la partita, è se ti hanno
+  // punito in ripartenza.
+  const [subitoContropiede, setSubitoContropiede] = useState(false)
   const [subitoZona, setSubitoZona] = useState<ZonaTiro | null>(null)
 
   // ----- STATE: palla inattiva battuta -----
@@ -721,6 +726,7 @@ function Live({
 
   function apriSubito() {
     setSubitoZona(null)
+    setSubitoContropiede(false)
     setPassoSubito('zona')
     setShowGolSubito(true)
   }
@@ -728,6 +734,7 @@ function Live({
   function chiudiSubito() {
     setShowGolSubito(false)
     setSubitoZona(null)
+    setSubitoContropiede(false)
     setPassoSubito('zona')
   }
 
@@ -743,6 +750,7 @@ function Live({
       tempoGioco,
       tipo: 'gol_subito',
       zona: subitoZona ?? undefined,
+      origine: subitoContropiede ? 'contropiede' : undefined,
     })
     chiudiSubito()
   }
@@ -758,6 +766,7 @@ function Live({
       tipo: 'tiro_subito',
       zona: subitoZona,
       esito,
+      origine: subitoContropiede ? 'contropiede' : undefined,
     })
     chiudiSubito()
   }
@@ -895,13 +904,15 @@ function Live({
    * l'evento della battuta: così il conteggio delle battute resta completo.
    */
   async function registraBattutaImplicita() {
-    if (origineFissata || tiroOrigine === 'azione') return
+    // Solo le palle inattive sono una «battuta»: azione e contropiede no.
+    const situazione = origineComeInattiva(tiroOrigine)
+    if (origineFissata || situazione === null) return
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tempoGioco,
       tipo: 'inattiva',
-      situazione: tiroOrigine,
+      situazione,
       schemaId: tiroSchemaId ?? undefined,
     })
   }
@@ -1845,7 +1856,17 @@ function Live({
               ) : (
                 <span className="text-amber-400/80">Zona non registrata</span>
               )}
+
             </p>
+            <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer bg-slate-900 rounded-lg px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={subitoContropiede}
+                onChange={(e) => setSubitoContropiede(e.target.checked)}
+                className="w-5 h-5"
+              />
+              🏃 Su contropiede
+            </label>
             <div className="flex flex-col gap-2">
               <button
                 onClick={segnaGolSubito}
