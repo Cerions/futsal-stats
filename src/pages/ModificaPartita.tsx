@@ -132,8 +132,15 @@ export default function ModificaPartita() {
         : [],
     [partita?.stagioneId]
   )
+  // Dal più recente al più vecchio: qui si viene per correggere l'ultima cosa
+  // registrata, non per rileggere la partita dall'inizio.
   const eventi = useLiveQuery(
-    () => db.eventi.where('partitaId').equals(partitaId).sortBy('id'),
+    () =>
+      db.eventi
+        .where('partitaId')
+        .equals(partitaId)
+        .sortBy('id')
+        .then((e) => e.reverse()),
     [partitaId]
   )
   const schemi = useLiveQuery(

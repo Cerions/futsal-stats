@@ -1543,40 +1543,38 @@ function Live({
             <p className="text-xs text-slate-400 mb-2">
               Schemi da {inattivaLabel(tiroOrigine as TipoInattiva).toLowerCase()}
             </p>
-            {schemiTiro.length === 0 ? (
-              <p className="text-slate-400 text-sm mb-3">
-                Nessuno schema definito per questa situazione. Puoi aggiungerli
-                dal setup della stagione.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
-                {schemiTiro.map((s) => (
-                  <li key={s.id}>
-                    <button
-                      onClick={() => scegliSchema(s.id!)}
-                      className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
-                    >
-                      <div className="font-semibold">{s.nome}</div>
-                      {s.note && (
-                        <div className="text-xs text-slate-400 truncate">{s.note}</div>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="border-t border-slate-700 pt-3 flex gap-2">
+            <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
+              <li>
+                <button
+                  onClick={() => scegliSchema(null)}
+                  className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+                >
+                  <div className="font-semibold">Senza schema</div>
+                  <div className="text-xs text-slate-400">
+                    Battuta normale, niente di preparato
+                  </div>
+                </button>
+              </li>
+              {schemiTiro.map((s) => (
+                <li key={s.id}>
+                  <button
+                    onClick={() => scegliSchema(s.id!)}
+                    className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+                  >
+                    <div className="font-semibold">{s.nome}</div>
+                    {s.note && (
+                      <div className="text-xs text-slate-400 truncate">{s.note}</div>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-slate-700 pt-3">
               <button
                 onClick={indietro}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
                 ← Indietro
-              </button>
-              <button
-                onClick={() => scegliSchema(null)}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
-              >
-                Nessuno schema
               </button>
             </div>
           </>
@@ -1736,6 +1734,20 @@ function Live({
         {passoInattiva === 'schema' && (
           <>
             <ul className="flex flex-col gap-2 max-h-72 overflow-y-auto mb-3">
+              <li>
+                <button
+                  onClick={() => {
+                    setInattivaSchemaId(null)
+                    setPassoInattiva('esito')
+                  }}
+                  className="w-full text-left bg-slate-900 hover:bg-slate-700 px-4 py-3 rounded-lg"
+                >
+                  <div className="font-semibold">Senza schema</div>
+                  <div className="text-xs text-slate-400">
+                    Battuta normale, niente di preparato
+                  </div>
+                </button>
+              </li>
               {schemiPerTipo(inattivaTipo).map((s) => (
                 <li key={s.id}>
                   <button
@@ -1753,21 +1765,12 @@ function Live({
                 </li>
               ))}
             </ul>
-            <div className="border-t border-slate-700 pt-3 flex gap-2">
+            <div className="border-t border-slate-700 pt-3">
               <button
                 onClick={() => setPassoInattiva('tipo')}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+                className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
                 ← Indietro
-              </button>
-              <button
-                onClick={() => {
-                  setInattivaSchemaId(null)
-                  setPassoInattiva('esito')
-                }}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
-              >
-                Nessuno schema
               </button>
             </div>
           </>
