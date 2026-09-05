@@ -203,6 +203,10 @@ export default function StatisticheStagione() {
     .filter((o) => o !== undefined)
   const etichettaOrigine = (o: OrigineTiro) =>
     definizioniOrigine.find((d) => d.value === o)?.label ?? origineLabel(o)
+  // Gli autogol hanno una colonna solo dal lato nostro: dei nostri autogol non
+  // registriamo com'erano nati, e una colonna sempre vuota è solo rumore.
+  const autogolProvocati = perOrigine.reduce((n, o) => n + o.autogol, 0)
+  const mostraAutogol = fronteOrigini === 'nostro'
   const perSchema = statistichePerSchema(eventiFiniti, schemi)
   const inattiveStagione = contaInattive(eventiFiniti)
 
@@ -401,6 +405,14 @@ export default function StatisticheStagione() {
                   <th className="px-2 py-2 text-left font-semibold">Situazione</th>
                   <th className="px-2 py-2 text-right font-semibold">Tiri</th>
                   <th className="px-2 py-2 text-right font-semibold">Gol</th>
+                  {mostraAutogol && (
+                    <th
+                      className="px-2 py-2 text-right font-semibold"
+                      title="Autogol avversari provocati da questa situazione"
+                    >
+                      AG
+                    </th>
+                  )}
                   <th className="px-2 py-2 text-right font-semibold">Conv.</th>
                   <th className="px-2 py-2 text-right font-semibold">xG</th>
                 </tr>
@@ -419,6 +431,11 @@ export default function StatisticheStagione() {
                     <td className="px-2 py-2 text-right tabular-nums font-semibold">
                       {o.gol}
                     </td>
+                    {mostraAutogol && (
+                      <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                        {o.autogol === 0 ? '—' : o.autogol}
+                      </td>
+                    )}
                     <td className="px-2 py-2 text-right tabular-nums text-slate-400">
                       {o.tiri === 0 ? '—' : `${Math.round((o.gol / o.tiri) * 100)}%`}
                     </td>
@@ -430,6 +447,13 @@ export default function StatisticheStagione() {
               </tbody>
             </table>
           </div>
+          {mostraAutogol && autogolProvocati > 0 && (
+            <p className="text-xs text-slate-500 -mt-4 mb-6">
+              <strong className="text-slate-400">AG</strong> sono gli autogol che
+              abbiamo provocato: contano nel risultato ma non fra i tiri, quindi
+              stanno fuori da conversione e xG.
+            </p>
+          )}
 
           {/* Resa degli schemi, una tabella per situazione */}
           <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
@@ -474,6 +498,12 @@ export default function StatisticheStagione() {
                             <th className="px-2 py-2 text-right font-semibold">
                               Gol
                             </th>
+                            <th
+                              className="px-2 py-2 text-right font-semibold"
+                              title="Autogol avversari provocati da questo schema"
+                            >
+                              AG
+                            </th>
                             <th className="px-2 py-2 text-right font-semibold">
                               Tiri/battuta
                             </th>
@@ -510,6 +540,9 @@ export default function StatisticheStagione() {
                                 {r.gol}
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                                {r.autogol === 0 ? '—' : r.autogol}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-400">
                                 {r.battute === 0
                                   ? '—'
                                   : (r.tiri / r.battute).toFixed(2)}
@@ -533,7 +566,10 @@ export default function StatisticheStagione() {
             hai giocato quello schema,{' '}
             <strong className="text-slate-400">Tiri</strong> quante volte ne è
             uscita una conclusione. Il rapporto tra i due dice se lo schema
-            produce o gira a vuoto.
+            produce o gira a vuoto.{' '}
+            <strong className="text-slate-400">AG</strong> sono gli autogol
+            avversari che lo schema ha provocato: gol veri, ma senza un tiro
+            nostro dietro, quindi fuori dalle altre colonne.
           </p>
         </>
       ) : vista === 'generali' ? (

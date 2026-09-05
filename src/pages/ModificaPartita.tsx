@@ -51,6 +51,7 @@ type TipoEventoNuovo =
 function eventoModificabile(e: Evento): boolean {
   return (
     e.tipo === 'gol_fatto' ||
+    e.tipo === 'autogol_pro' ||
     e.tipo === 'autogol_contro' ||
     e.tipo === 'tiro' ||
     e.tipo === 'gol_subito' ||
@@ -383,7 +384,11 @@ export default function ModificaPartita() {
         break
       }
       case 'autogol_pro':
-        await db.eventi.add({ ...base, tipo: 'autogol_pro' })
+        await db.eventi.add({
+          ...base,
+          ...datiOrigineNuovi(),
+          tipo: 'autogol_pro',
+        })
         break
       case 'autogol_contro': {
         if (marcatoreNuovo === '') return
@@ -466,6 +471,13 @@ export default function ModificaPartita() {
       case 'autogol_contro':
         setEditMarcatore(e.giocatoreId)
         break
+      case 'autogol_pro':
+        // nessun nostro giocatore: sblocchiamo il salvataggio
+        setEditMarcatore(0)
+        setEditOrigine(e.origine ?? 'azione')
+        setEditBattuta(e.zonaBattuta ?? '')
+        setEditSchema(e.schemaId ?? '')
+        break
       case 'gol_subito':
         // niente giocatore nostro: sblocchiamo il salvataggio
         setEditMarcatore(0)
@@ -532,6 +544,10 @@ export default function ModificaPartita() {
       await db.eventi.update(eventoInModifica.id!, {
         giocatoreId: Number(editMarcatore),
       } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'autogol_pro') {
+      await db.eventi.update(eventoInModifica.id!, {
+        ...datiOrigineEdit,
+      } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro') {
       if (editZona === '') return
       await db.eventi.update(eventoInModifica.id!, {
@@ -594,7 +610,12 @@ export default function ModificaPartita() {
   const editZonaOpzionale =
     tipoInModifica === 'gol_fatto' || tipoInModifica === 'gol_subito'
   const editHaEsito = tipoInModifica === 'tiro' || tipoInModifica === 'tiro_subito'
-  const editHaOrigine = tipoInModifica === 'gol_fatto' || tipoInModifica === 'tiro'
+  // Anche l'autogol provocato: nasce da una nostra palla inattiva, quindi ha
+  // origine, punto di battuta e schema come una conclusione qualsiasi.
+  const editHaOrigine =
+    tipoInModifica === 'gol_fatto' ||
+    tipoInModifica === 'tiro' ||
+    tipoInModifica === 'autogol_pro'
   /** Sui subiti si sceglie l'origine, ma non schema né punto di battuta. */
   const editHaSoloOrigine =
     tipoInModifica === 'gol_subito' || tipoInModifica === 'tiro_subito'
@@ -615,8 +636,9 @@ export default function ModificaPartita() {
   const richiedeCambio = tipoNuovo === 'cambio'
   // Origine e schema descrivono come costruiamo NOI l'azione: delle conclusioni
   // subite registriamo solo da dove sono partite e com'è finita.
-  // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
-  const mostraOrigine = tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro'
+  // L'autogol provocato è dei nostri: nasce da una palla inattiva nostra.
+  const mostraOrigine =
+    tipoNuovo === 'gol_fatto' || tipoNuovo === 'tiro' || tipoNuovo === 'autogol_pro'
   const mostraSoloOrigine =
     tipoNuovo === 'gol_subito' || tipoNuovo === 'tiro_subito'
   const mostraSchemaNuovo =
@@ -1117,6 +1139,8 @@ export default function ModificaPartita() {
             ? 'Modifica palla inattiva'
             : eventoInModifica?.tipo === 'cambio'
             ? 'Modifica sostituzione'
+            : eventoInModifica?.tipo === 'autogol_pro'
+            ? 'Modifica autogol avversario'
             : 'Modifica autogol'
         }
       >

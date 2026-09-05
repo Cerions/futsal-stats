@@ -275,6 +275,7 @@ export function origineDi(e: Evento): OrigineTiro {
     case 'gol_fatto':
     case 'tiro_subito':
     case 'gol_subito':
+    case 'autogol_pro':
       return e.origine ?? 'azione'
     default:
       return 'azione'

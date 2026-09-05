@@ -370,6 +370,12 @@ export interface StatsOrigine {
   origine: OrigineTiro
   tiri: number
   gol: number
+  /**
+   * Autogol avversari nati da questa situazione. Contati a parte: sono gol,
+   * ma non sono tiri nostri e non hanno xG. Sommarli ai gol farebbe salire la
+   * conversione sopra il 100% su uno schema con un tiro e due gol.
+   */
+  autogol: number
   xG: number
 }
 
@@ -386,13 +392,21 @@ export function statistichePerOrigine(
   const mappa = new Map<OrigineTiro, StatsOrigine>(
     TUTTE_LE_ORIGINI.map((o) => [
       o.value,
-      { origine: o.value, tiri: 0, gol: 0, xG: 0 },
+      { origine: o.value, tiri: 0, gol: 0, autogol: 0, xG: 0 },
     ])
   )
   const tipoGol = fronte === 'nostro' ? 'gol_fatto' : 'gol_subito'
   const tipoTiro = fronte === 'nostro' ? 'tiro' : 'tiro_subito'
 
   for (const e of eventi) {
+    // L'autogol provocato appartiene alla situazione da cui è nato, ma non è
+    // una nostra conclusione: entra solo nella colonna sua. Dal lato loro non
+    // esiste: dei nostri autogol non registriamo com'erano nati.
+    if (e.tipo === 'autogol_pro' && fronte === 'nostro') {
+      const s = mappa.get(origineDi(e))
+      if (s) s.autogol += 1
+      continue
+    }
     if (e.tipo !== tipoTiro && e.tipo !== tipoGol) continue
     const s = mappa.get(origineDi(e))
     if (!s) continue
@@ -411,6 +425,8 @@ export interface StatsSchema {
   battute: number
   tiri: number
   gol: number
+  /** Autogol avversari provocati da questo schema: gol, ma non tiri nostri. */
+  autogol: number
   xG: number
 }
 
@@ -421,6 +437,7 @@ export interface GruppoSchemi {
   battute: number
   tiri: number
   gol: number
+  autogol: number
   xG: number
 }
 
@@ -440,6 +457,7 @@ export function statistichePerSchema(
     battute: 0,
     tiri: 0,
     gol: 0,
+    autogol: 0,
     xG: 0,
   })
 
@@ -468,6 +486,12 @@ export function statistichePerSchema(
   for (const e of eventi) {
     if (e.tipo === 'inattiva') {
       riga(e.situazione, e.schemaId).battute += 1
+    } else if (e.tipo === 'autogol_pro') {
+      // Il cross deviato dentro dall'avversario: lo schema ha funzionato, e
+      // conta in colonna sua perché un tiro nostro non c'è stato.
+      const situazione = origineComeInattiva(origineDi(e))
+      if (situazione === null) continue
+      riga(situazione, e.schemaId).autogol += 1
     } else if (e.tipo === 'tiro' || e.tipo === 'gol_fatto') {
       // Solo le palle inattive hanno schemi: azione e contropiede no.
       const situazione = origineComeInattiva(origineDi(e))
@@ -484,13 +508,16 @@ export function statistichePerSchema(
       .filter(([k]) => tipoDiRiga.get(k) === t.value)
       .map(([, r]) => r)
       // la riga "senza schema" si mostra solo se ha davvero qualcosa dentro
-      .filter((r) => r.schema !== null || r.battute > 0 || r.tiri > 0)
+      .filter(
+        (r) => r.schema !== null || r.battute > 0 || r.tiri > 0 || r.autogol > 0
+      )
     return {
       tipo: t.value,
       righe: delTipo,
       battute: delTipo.reduce((n, r) => n + r.battute, 0),
       tiri: delTipo.reduce((n, r) => n + r.tiri, 0),
       gol: delTipo.reduce((n, r) => n + r.gol, 0),
+      autogol: delTipo.reduce((n, r) => n + r.autogol, 0),
       xG: delTipo.reduce((n, r) => n + r.xG, 0),
     }
   })

@@ -82,12 +82,16 @@ export function descriviEvento(
     return zonaLabelCorta(z)
   }
 
-  // Coda con origine, punto di battuta e schema, quando ci sono
+  // Coda con origine, punto di battuta e schema, quando ci sono.
+  // L'autogol provocato passa di qui pure lui: non ha zona, ma ha eccome la
+  // situazione da cui è nato.
   const contesto = (
-    ev: Extract<Evento, { tipo: 'tiro' | 'gol_fatto' }>
+    ev: Extract<Evento, { tipo: 'tiro' | 'gol_fatto' | 'autogol_pro' }>
   ): string => {
     const parti: string[] = []
-    if (ev.zona !== undefined) parti.push(zonaLabelCorta(ev.zona))
+    if (ev.tipo !== 'autogol_pro' && ev.zona !== undefined) {
+      parti.push(zonaLabelCorta(ev.zona))
+    }
     const origine = ev.origine ?? 'azione'
     if (origine !== 'azione') {
       const schema = nomeSchema(ev.schemaId)
@@ -128,7 +132,7 @@ export function descriviEvento(
       }`
     }
     case 'autogol_pro':
-      return `⚽ Gol (autogol avversario)`
+      return `⚽ Gol (autogol avversario)${contesto(e)}`
     case 'autogol_contro':
       return `⚽ Autogol di ${nome(e.giocatoreId)}`
     case 'cambio':

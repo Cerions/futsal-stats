@@ -680,6 +680,10 @@ function Live({
   const [tiroZona, setTiroZona] = useState<ZonaTiro | null>(null)
   // true quando il flusso arriva dal bottone Corner: origine e schema già decisi
   const [origineFissata, setOrigineFissata] = useState(false)
+  // true quando lo stesso flusso sta registrando un autogol dell'avversario:
+  // stessi passi fino allo schema, poi si salva — zona ed esito non ci sono,
+  // il tiro non l'abbiamo fatto noi.
+  const [autogolPro, setAutogolPro] = useState(false)
 
   // ----- STATE: conclusione subita -----
   // Stesso principio del flusso nostro, ma senza giocatore: degli avversari
@@ -798,14 +802,40 @@ function Live({
     setShowAutogolContro(false)
   }
 
-  // Autogol pro = avversario fa autogol → gol per noi senza marcatore nostro
-  async function segnaAutogolPro() {
+  // Autogol pro = avversario fa autogol → gol per noi senza marcatore nostro.
+  // Non si salva al volo: prima si dice da cosa è nato, perché un cross su
+  // corner deviato dentro è un successo dello schema esattamente come un gol.
+  function apriAutogolPro() {
+    setTiroGiocatoreId(null)
+    setTiroZona(null)
+    setTiroBattuta(null)
+    setTiroSchemaId(null)
+    setTiroOrigine('azione')
+    setAutogolPro(true)
+    setPasso('origine')
+  }
+
+  /**
+   * Salva l'autogol provocato. I valori arrivano come argomenti e non dallo
+   * stato: chi chiama li ha appena scelti, e lo stato di React non è ancora
+   * aggiornato quando la funzione parte.
+   */
+  async function salvaAutogolPro(dati: {
+    origine: OrigineTiro
+    battuta: ZonaTiro | null
+    schemaId: number | null
+  }) {
+    await registraBattutaImplicita(dati.origine, dati.schemaId)
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tempoGioco,
       tipo: 'autogol_pro',
+      origine: dati.origine,
+      zonaBattuta: dati.battuta ?? undefined,
+      schemaId: dati.schemaId ?? undefined,
     })
+    chiudiTiro()
   }
 
   // ----- CONCLUSIONE: flusso unico per tiri e gol -----
@@ -817,6 +847,7 @@ function Live({
     setTiroOrigine(preset?.origine ?? 'azione')
     setTiroSchemaId(preset?.schemaId ?? null)
     setOrigineFissata(preset !== undefined)
+    setAutogolPro(false)
     setPasso('giocatore')
     setShowTiro(true)
   }
@@ -829,6 +860,7 @@ function Live({
     setTiroSchemaId(null)
     setTiroOrigine('azione')
     setOrigineFissata(false)
+    setAutogolPro(false)
     setPasso('giocatore')
   }
 
@@ -850,6 +882,8 @@ function Live({
     if (origineRichiedeBattuta(o)) setPasso('battuta')
     else if (origineRichiedeSchema(o) && schemiPerTipo(o as TipoInattiva).length > 0)
       setPasso('schema')
+    // L'autogol finisce qui: zona ed esito riguardano un tiro nostro.
+    else if (autogolPro) salvaAutogolPro({ origine: o, battuta: null, schemaId: null })
     else setPasso('zona')
   }
 
@@ -859,11 +893,23 @@ function Live({
       !origineFissata &&
       origineRichiedeSchema(tiroOrigine) &&
       schemiPerTipo(tiroOrigine as TipoInattiva).length > 0
-    setPasso(chiediSchema ? 'schema' : 'zona')
+    if (chiediSchema) {
+      setPasso('schema')
+      return
+    }
+    if (autogolPro) {
+      salvaAutogolPro({ origine: tiroOrigine, battuta: z, schemaId: null })
+      return
+    }
+    setPasso('zona')
   }
 
   function scegliSchema(schemaId: number | null) {
     setTiroSchemaId(schemaId)
+    if (autogolPro) {
+      salvaAutogolPro({ origine: tiroOrigine, battuta: tiroBattuta, schemaId })
+      return
+    }
     setPasso('zona')
   }
 
@@ -914,9 +960,12 @@ function Live({
    * (e non arriva dal bottone dedicato, che l'ha già registrata), salva anche
    * l'evento della battuta: così il conteggio delle battute resta completo.
    */
-  async function registraBattutaImplicita() {
+  async function registraBattutaImplicita(
+    origine: OrigineTiro = tiroOrigine,
+    schemaId: number | null = tiroSchemaId
+  ) {
     // Solo le palle inattive sono una «battuta»: azione e contropiede no.
-    const situazione = origineComeInattiva(tiroOrigine)
+    const situazione = origineComeInattiva(origine)
     if (origineFissata || situazione === null) return
     await db.eventi.add({
       partitaId: partita.id!,
@@ -924,7 +973,7 @@ function Live({
       tempoGioco,
       tipo: 'inattiva',
       situazione,
-      schemaId: tiroSchemaId ?? undefined,
+      schemaId: schemaId ?? undefined,
     })
   }
 
@@ -971,7 +1020,11 @@ function Live({
     esito: "Com'è finita?",
     assist: 'Assist?',
   }
-  const titoloPassoTiro = TITOLI_PASSO[passo]
+  // Nell'autogol i passi sono gli stessi, ma la domanda è un'altra: non da
+  // dove abbiamo tirato noi, da cosa è nata la palla che hanno buttato dentro.
+  const titoloPassoTiro = autogolPro
+    ? 'Autogol — da cosa è nato?'
+    : TITOLI_PASSO[passo]
 
   // ----- PALLA INATTIVA BATTUTA -----
 
@@ -1503,10 +1556,7 @@ function Live({
             </ul>
             <div className="border-t border-slate-700 mt-3 pt-3">
               <button
-                onClick={() => {
-                  chiudiTiro()
-                  segnaAutogolPro()
-                }}
+                onClick={apriAutogolPro}
                 className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
                 Autogol avversario (nessun marcatore)

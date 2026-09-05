@@ -161,7 +161,13 @@ export type Evento =
   | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_fatto'; giocatoreId: number; assistId?: number; zona?: ZonaTiro } & DatiOrigine)
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'gol_subito'; zona?: ZonaTiro; origine?: OrigineTiro; noteGiocatoreAvv?: string }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro_subito'; zona: ZonaTiro; esito: EsitoTiro; origine?: OrigineTiro; noteGiocatoreAvv?: string }
-  | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_pro'; noteGiocatoreAvv?: string }
+  // L'autogol dell'avversario nasce da una nostra azione: un cross su corner
+  // deviato dentro è un successo dello schema quanto un gol, quindi si porta
+  // dietro origine, battuta e schema come una conclusione qualsiasi. Zona ed
+  // esito no: non è un tiro nostro e non ha xG.
+  | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_pro'; noteGiocatoreAvv?: string } & DatiOrigine)
+  // Il nostro autogol nasce invece da una palla loro, e i loro schemi non li
+  // abbiamo: qui non c'è niente di utile da registrare oltre a chi l'ha fatto.
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'autogol_contro'; giocatoreId: number }
   | { id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'cambio'; giocatoreEntraId: number; giocatoreEsceId: number }
   | ({ id?: number; partitaId: number; minuto: number; tempoGioco: number; tipo: 'tiro'; giocatoreId: number; zona: ZonaTiro; esito: EsitoTiro } & DatiOrigine)
