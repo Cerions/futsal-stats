@@ -193,12 +193,14 @@ export default function StatisticheStagione() {
   ).length
 
   const golSenzaZona = stats.reduce((t, s) => t + s.golSenzaZona, 0)
-  // Del fronte avversario esistono solo due categorie: le altre non le
-  // registriamo, e mostrarle a zero direbbe che non ne hanno mai battute.
+  // Le due liste non coincidono: di là c'è il rigore e non c'è il calcio
+  // d'inizio, e «azione» si chiama «resto del gioco».
   const definizioniOrigine = originiPerFronte(fronteOrigini)
-  const perOrigine = statistichePerOrigine(eventiFiniti, fronteOrigini).filter((o) =>
-    definizioniOrigine.some((d) => d.value === o.origine)
-  )
+  // Nell'ordine in cui le origini si presentano altrove, non in quello interno.
+  const conteggiOrigine = statistichePerOrigine(eventiFiniti, fronteOrigini)
+  const perOrigine = definizioniOrigine
+    .map((d) => conteggiOrigine.find((o) => o.origine === d.value))
+    .filter((o) => o !== undefined)
   const etichettaOrigine = (o: OrigineTiro) =>
     definizioniOrigine.find((d) => d.value === o)?.label ?? origineLabel(o)
   const perSchema = statistichePerSchema(eventiFiniti, schemi)

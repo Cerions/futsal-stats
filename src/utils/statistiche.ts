@@ -12,12 +12,13 @@ import {
   esitoInPorta,
   origineComeInattiva,
   origineDi,
-  ORIGINI_TIRO,
+  TUTTE_LE_ORIGINI,
   pesoZona,
   TIPI_INATTIVA,
   zonaDiTiro,
 } from '../db/zone'
 import type { Fronte } from '../db/zone'
+import { ordineDiGioco } from './evento'
 import type { ConteggioZona } from '../components/CampoTiri'
 
 export interface StatsGiocatore {
@@ -52,8 +53,7 @@ function intervalliInCampoPerGiocatore(
 ): Map<number, IntervalloInCampo[]> {
   const risultato = new Map<number, IntervalloInCampo[]>()
 
-  // Ordiniamo gli eventi per id (l'ordine cronologico di inserimento è quello giusto)
-  const eventiOrdinati = [...eventi].sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
+  const eventiOrdinati = [...eventi].sort(ordineDiGioco)
 
   // Per ogni tempo, ricostruiamo chi era in campo dall'inizio.
   // Nella partita, i titolari iniziano il tempo 1 in campo.
@@ -168,11 +168,11 @@ export function calcolaStatistiche(
   }
 
   for (const partita of partiteFinite) {
-    // L'ordine di inserimento è l'ordine reale dei fatti: serve per sapere se
-    // un gol è arrivato prima o dopo un cambio segnato nello stesso minuto.
+    // In ordine di gioco: serve per sapere se un gol è arrivato prima o dopo un
+    // cambio, anche quando il cambio è stato aggiunto a mano molto dopo.
     const eventiPartita = tuttiEventi
       .filter((e) => e.partitaId === partita.id)
-      .sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
+      .sort(ordineDiGioco)
     const intervalliPerGiocatore = intervalliInCampoPerGiocatore(partita, eventiPartita)
 
     // Presenze: chi era nei convocati
@@ -381,8 +381,13 @@ export function statistichePerOrigine(
   eventi: Evento[],
   fronte: Fronte = 'nostro'
 ): StatsOrigine[] {
+  // Tutte le origini, non solo le nostre: il rigore esiste solo dal lato loro
+  // e senza di lui i gol su rigore sparirebbero dal conto.
   const mappa = new Map<OrigineTiro, StatsOrigine>(
-    ORIGINI_TIRO.map((o) => [o.value, { origine: o.value, tiri: 0, gol: 0, xG: 0 }])
+    TUTTE_LE_ORIGINI.map((o) => [
+      o.value,
+      { origine: o.value, tiri: 0, gol: 0, xG: 0 },
+    ])
   )
   const tipoGol = fronte === 'nostro' ? 'gol_fatto' : 'gol_subito'
   const tipoTiro = fronte === 'nostro' ? 'tiro' : 'tiro_subito'

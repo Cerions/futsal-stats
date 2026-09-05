@@ -109,11 +109,16 @@ export type EsitoTiro = 'parato' | 'fuori' | 'palo' | 'ribattuto'
 export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
 
 /**
- * Come nasce una conclusione: gioco costruito, ripartenza, oppure una delle
- * quattro palle inattive. Il contropiede sta accanto all'azione perché è
+ * Come nasce una conclusione: gioco costruito, ripartenza, rigore, oppure una
+ * delle quattro palle inattive. Il contropiede sta accanto all'azione perché è
  * gioco in movimento, non una palla ferma: non ha schemi né punto di battuta.
+ *
+ * Il rigore si usa solo dal fronte avversario. Dei nostri il rigore è già la
+ * zona di tiro 'RIGORE', e averlo in due posti vorrebbe dire registrarlo in due
+ * modi diversi; delle conclusioni subite invece la zona spesso non basta —
+ * volevamo poter dire «questo gol l'abbiamo preso su rigore».
  */
-export type OrigineTiro = 'azione' | 'contropiede' | TipoInattiva
+export type OrigineTiro = 'azione' | 'contropiede' | 'rigore' | TipoInattiva
 
 /**
  * Schema di palla inattiva, definito a mano nel setup della stagione

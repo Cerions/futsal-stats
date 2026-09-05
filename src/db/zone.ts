@@ -208,25 +208,60 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
   ...TIPI_INATTIVA.map((t) => ({ ...t, richiedeSchema: true })),
 ]
 
-const MAPPA_ORIGINI = new Map(ORIGINI_TIRO.map((o) => [o.value, o]))
+/**
+ * Il rigore vive solo dal lato avversario, quindi resta fuori da ORIGINI_TIRO
+ * (che è la lista dei nostri). Sta però nella mappa, perché va comunque
+ * etichettato quando lo si legge nel log o nelle statistiche.
+ */
+const ORIGINE_RIGORE: DefinizioneOrigine = {
+  value: 'rigore',
+  label: 'Rigore',
+  labelCorta: 'Rigore',
+  icona: '⚫',
+  richiedeBattuta: false,
+  richiedeSchema: false,
+}
+
+/** Tutte le origini esistenti, nostre e loro. Serve per etichettare e contare. */
+export const TUTTE_LE_ORIGINI: DefinizioneOrigine[] = [
+  ...ORIGINI_TIRO,
+  ORIGINE_RIGORE,
+]
+
+const MAPPA_ORIGINI = new Map(TUTTE_LE_ORIGINI.map((o) => [o.value, o]))
 
 /**
  * Le origini che ha senso mostrare, per fronte.
  *
- * Delle conclusioni che subiamo registriamo solo se sono nate da contropiede:
- * mentre segui la partita non c'è tempo per classificare anche le loro palle
- * inattive. Quindi da quel lato esistono due sole categorie, e «azione» vuol
- * dire «tutto il resto» — elencare corner e punizioni a zero racconterebbe una
- * cosa falsa, cioè che non ne hanno mai battute.
+ * Da parte nostra: azione, contropiede e le quattro palle inattive, ognuna con
+ * i suoi schemi. Il rigore no, perché di là è già la zona 'RIGORE'.
+ *
+ * Da parte loro la lista è diversa. Gli schemi non c'entrano — sono i nostri —
+ * e il calcio d'inizio nemmeno, non ci hanno mai segnato da lì. Restano le
+ * situazioni che quando prendi gol vuoi sapere: rigore, punizione, corner,
+ * rimessa, più il contropiede. «Resto del gioco» raccoglie tutto il resto.
  */
 export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
   if (fronte === 'nostro') return ORIGINI_TIRO
-  const azione = MAPPA_ORIGINI.get('azione')!
-  const contropiede = MAPPA_ORIGINI.get('contropiede')!
+  const di = (v: OrigineTiro) => MAPPA_ORIGINI.get(v)!
+  const azione = di('azione')
   return [
     { ...azione, label: 'Resto del gioco', labelCorta: 'Resto' },
-    contropiede,
+    di('contropiede'),
+    di('rigore'),
+    di('piazzato'),
+    di('corner'),
+    di('rimessa'),
   ]
+}
+
+/**
+ * La zona da cui si conclude quando l'origine la decide già da sé.
+ * Il rigore si batte dal dischetto: chiedere anche la zona sarebbe una domanda
+ * a cui c'è una sola risposta.
+ */
+export function zonaImplicitaOrigine(o: OrigineTiro): ZonaTiro | null {
+  return o === 'rigore' ? 'RIGORE' : null
 }
 
 /**

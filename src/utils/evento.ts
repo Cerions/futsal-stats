@@ -1,4 +1,4 @@
-import type { Evento, Giocatore, OrigineTiro, Schema } from '../db/schema'
+import type { Evento, Giocatore, OrigineTiro, Schema, ZonaTiro } from '../db/schema'
 import { nomeCorto } from './giocatore'
 import {
   esitoLabel,
@@ -6,8 +6,50 @@ import {
   inattivaLabel,
   origineIcona,
   origineLabelCorta,
+  zonaImplicitaOrigine,
   zonaLabelCorta,
 } from '../db/zone'
+
+/**
+ * L'ordine in cui i fatti sono successi in campo.
+ *
+ * Non basta l'id. Dal vivo l'ordine di inserimento coincide con quello di
+ * gioco, ma un evento aggiunto a mano dopo la partita prende l'id più alto di
+ * tutti anche se racconta il 20° del primo tempo: ordinando per id finirebbe in
+ * fondo, e un cambio inserito così non toglierebbe dal campo nessuno. Tempo e
+ * minuto vengono prima; l'id resta come spareggio fra eventi dello stesso
+ * minuto, dove è ancora l'indizio migliore che abbiamo.
+ */
+export function ordineDiGioco(
+  a: { tempoGioco: number; minuto: number; id?: number },
+  b: { tempoGioco: number; minuto: number; id?: number }
+): number {
+  if (a.tempoGioco !== b.tempoGioco) return a.tempoGioco - b.tempoGioco
+  if (a.minuto !== b.minuto) return a.minuto - b.minuto
+  return (a.id ?? 0) - (b.id ?? 0)
+}
+
+/**
+ * I nostri giocatori nominati da un evento, in qualsiasi ruolo: marcatore,
+ * assistman, chi entra, chi esce. Serve per sapere se un giocatore ha lasciato
+ * tracce in partita — prima di toglierlo dai convocati — e per capire cosa
+ * spostare quando una sostituzione viene aggiunta a posteriori.
+ */
+export function giocatoriCoinvolti(e: Evento): number[] {
+  switch (e.tipo) {
+    case 'gol_fatto':
+      return e.assistId !== undefined
+        ? [e.giocatoreId, e.assistId]
+        : [e.giocatoreId]
+    case 'tiro':
+    case 'autogol_contro':
+      return [e.giocatoreId]
+    case 'cambio':
+      return [e.giocatoreEsceId, e.giocatoreEntraId]
+    default:
+      return []
+  }
+}
 
 /**
  * Descrive un evento per la visualizzazione nel log.
@@ -31,6 +73,14 @@ export function descriviEvento(
     o === undefined || o === 'azione'
       ? null
       : `${origineIcona(o)} ${origineLabelCorta(o)}`
+
+  // La zona, saltata quando è l'origine stessa a imporla: «Rigore · Rigore» non
+  // dice niente in più di «Rigore».
+  const zonaLoro = (z?: ZonaTiro, o?: OrigineTiro): string | null => {
+    if (z === undefined) return null
+    if (o !== undefined && zonaImplicitaOrigine(o) === z) return null
+    return zonaLabelCorta(z)
+  }
 
   // Coda con origine, punto di battuta e schema, quando ci sono
   const contesto = (
@@ -64,17 +114,18 @@ export function descriviEvento(
         : `⚽ Gol di ${nome(e.giocatoreId)}${coda}`
     }
     case 'gol_subito': {
-      const parti = [
-        e.zona !== undefined ? zonaLabelCorta(e.zona) : null,
-        codaOrigineLoro(e.origine),
-      ].filter(Boolean)
+      const parti = [zonaLoro(e.zona, e.origine), codaOrigineLoro(e.origine)].filter(
+        Boolean
+      )
       return `⚽ Gol subito${parti.length ? ` · ${parti.join(' · ')}` : ''}`
     }
     case 'tiro_subito': {
-      const parti = [zonaLabelCorta(e.zona), codaOrigineLoro(e.origine)].filter(
+      const parti = [zonaLoro(e.zona, e.origine), codaOrigineLoro(e.origine)].filter(
         Boolean
       )
-      return `🥅 Tiro loro — ${esitoLabel(e.esito).toLowerCase()} · ${parti.join(' · ')}`
+      return `🥅 Tiro loro — ${esitoLabel(e.esito).toLowerCase()}${
+        parti.length ? ` · ${parti.join(' · ')}` : ''
+      }`
     }
     case 'autogol_pro':
       return `⚽ Gol (autogol avversario)`

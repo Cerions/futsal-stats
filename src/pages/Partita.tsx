@@ -47,10 +47,13 @@ import {
   origineRichiedeBattuta,
   origineComeInattiva,
   origineRichiedeSchema,
+  originiPerFronte,
   pesoZona,
   xgTotale,
+  zonaImplicitaOrigine,
   zonaLabel,
 } from '../db/zone'
+import GestioneConvocati from '../components/GestioneConvocati'
 
 /** Passi del flusso di registrazione di una conclusione. */
 type PassoTiro = 'giocatore' | 'origine' | 'battuta' | 'schema' | 'zona' | 'esito' | 'assist'
@@ -660,6 +663,7 @@ function Live({
   const [showGolSubito, setShowGolSubito] = useState(false)
   const [showAutogolContro, setShowAutogolContro] = useState(false)
   const [showCambio, setShowCambio] = useState(false)
+  const [showConvocati, setShowConvocati] = useState(false)
   const [esceId, setEsceId] = useState<number | null>(null)
   const [showFineTempo, setShowFineTempo] = useState(false)
   const [showFinePartita, setShowFinePartita] = useState(false)
@@ -681,10 +685,9 @@ function Live({
   // Stesso principio del flusso nostro, ma senza giocatore: degli avversari
   // ci interessa solo da dove hanno concluso e com'è finita.
   const [passoSubito, setPassoSubito] = useState<'zona' | 'esito'>('zona')
-  // Delle conclusioni loro non teniamo l'origine completa: l'unica cosa che
-  // vale la pena registrare in fretta, mentre segui la partita, è se ti hanno
-  // punito in ripartenza.
-  const [subitoContropiede, setSubitoContropiede] = useState(false)
+  // L'origine delle conclusioni loro: una riga di scelte, non un passo a sé,
+  // così registrare resta una cosa da due tocchi anche mentre segui la partita.
+  const [subitoOrigine, setSubitoOrigine] = useState<OrigineTiro>('azione')
   const [subitoZona, setSubitoZona] = useState<ZonaTiro | null>(null)
 
   // ----- STATE: palla inattiva battuta -----
@@ -715,6 +718,14 @@ function Live({
     ? schemiPerTipo(tiroOrigine as TipoInattiva)
     : []
 
+  /**
+   * La zona da cui hanno concluso. Il rigore si batte dal dischetto e basta:
+   * se l'origine è quella, decide lei, anche se avevi toccato un'altra zona.
+   */
+  const zonaSubitoEffettiva = zonaImplicitaOrigine(subitoOrigine) ?? subitoZona
+  /** Le origini da proporre per le conclusioni loro. */
+  const originiSubito = originiPerFronte('loro')
+
   // ----- Conclusioni subite e xGA -----
   const conteggiZoneSubiti = conteggiPerZona(eventi, 'loro')
   const xgaPartita = xgTotale(eventi, 'loro')
@@ -726,7 +737,7 @@ function Live({
 
   function apriSubito() {
     setSubitoZona(null)
-    setSubitoContropiede(false)
+    setSubitoOrigine('azione')
     setPassoSubito('zona')
     setShowGolSubito(true)
   }
@@ -734,7 +745,7 @@ function Live({
   function chiudiSubito() {
     setShowGolSubito(false)
     setSubitoZona(null)
-    setSubitoContropiede(false)
+    setSubitoOrigine('azione')
     setPassoSubito('zona')
   }
 
@@ -749,8 +760,8 @@ function Live({
       minuto,
       tempoGioco,
       tipo: 'gol_subito',
-      zona: subitoZona ?? undefined,
-      origine: subitoContropiede ? 'contropiede' : undefined,
+      zona: zonaSubitoEffettiva ?? undefined,
+      origine: subitoOrigine === 'azione' ? undefined : subitoOrigine,
     })
     chiudiSubito()
   }
@@ -758,15 +769,15 @@ function Live({
   async function registraTiroSubito(esito: EsitoTiro) {
     // Senza zona non c'è xGA da calcolare: un tiro loro che non so
     // localizzare non aggiunge niente, quindi non lo registro.
-    if (subitoZona === null) return
+    if (zonaSubitoEffettiva === null) return
     await db.eventi.add({
       partitaId: partita.id!,
       minuto,
       tempoGioco,
       tipo: 'tiro_subito',
-      zona: subitoZona,
+      zona: zonaSubitoEffettiva,
       esito,
-      origine: subitoContropiede ? 'contropiede' : undefined,
+      origine: subitoOrigine === 'azione' ? undefined : subitoOrigine,
     })
     chiudiSubito()
   }
@@ -1318,24 +1329,36 @@ function Live({
           </ul>
 
           {/* Panchina (info) */}
-          {panchina.length > 0 && (
-            <>
-              <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-                Panchina
-              </h2>
-              <ul className="flex flex-col gap-1 mb-4 opacity-70">
-                {panchina.map((g) => (
-                  <li key={g.id} className="bg-slate-800/50 rounded-lg px-4 py-2 flex items-center gap-3">
-                    {g.numero !== undefined && (
-                      <span className="bg-slate-700 w-7 h-7 rounded-full flex items-center justify-center text-xs">
-                        {g.numero}
-                      </span>
-                    )}
-                    <span className="flex-1 text-sm">{nomeCorto(g)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">
+              Panchina
+            </h2>
+            {!soloLettura && (
+              <button
+                onClick={() => setShowConvocati(true)}
+                className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded"
+              >
+                Convocati
+              </button>
+            )}
+          </div>
+          {panchina.length === 0 ? (
+            <p className="text-slate-500 italic text-sm mb-4">
+              Nessuno in panchina.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 mb-4 opacity-70">
+              {panchina.map((g) => (
+                <li key={g.id} className="bg-slate-800/50 rounded-lg px-4 py-2 flex items-center gap-3">
+                  {g.numero !== undefined && (
+                    <span className="bg-slate-700 w-7 h-7 rounded-full flex items-center justify-center text-xs">
+                      {g.numero}
+                    </span>
+                  )}
+                  <span className="flex-1 text-sm">{nomeCorto(g)}</span>
+                </li>
+              ))}
+            </ul>
           )}
 
           {/* Bottoni gestione partita */}
@@ -1848,12 +1871,14 @@ function Live({
         {passoSubito === 'esito' && (
           <>
             <p className="text-sm text-slate-400 mb-3">
-              {subitoZona !== null ? (
+              {zonaSubitoEffettiva !== null ? (
                 <>
                   Hanno concluso da{' '}
-                  <strong className="text-slate-200">{zonaLabel(subitoZona)}</strong>{' '}
+                  <strong className="text-slate-200">
+                    {zonaLabel(zonaSubitoEffettiva)}
+                  </strong>{' '}
                   <span className="text-red-400">
-                    (xGA {pesoZona(subitoZona).toFixed(2)})
+                    (xGA {pesoZona(zonaSubitoEffettiva).toFixed(2)})
                   </span>
                 </>
               ) : (
@@ -1861,15 +1886,28 @@ function Live({
               )}
 
             </p>
-            <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer bg-slate-900 rounded-lg px-3 py-2.5">
-              <input
-                type="checkbox"
-                checked={subitoContropiede}
-                onChange={(e) => setSubitoContropiede(e.target.checked)}
-                className="w-5 h-5"
-              />
-              🏃 Su contropiede
-            </label>
+            <p className="text-xs text-slate-400 mb-1">Com'è nata</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {originiSubito.map((o) => {
+                const scelta = subitoOrigine === o.value
+                return (
+                  <button
+                    key={o.value}
+                    data-origine={o.value}
+                    onClick={() =>
+                      setSubitoOrigine(scelta ? 'azione' : o.value)
+                    }
+                    className={`px-3 py-2.5 rounded-lg text-sm text-left ${
+                      scelta
+                        ? 'bg-red-600 font-semibold'
+                        : 'bg-slate-900 hover:bg-slate-700'
+                    }`}
+                  >
+                    {o.icona} {o.labelCorta}
+                  </button>
+                )
+              })}
+            </div>
             <div className="flex flex-col gap-2">
               <button
                 onClick={segnaGolSubito}
@@ -1877,7 +1915,7 @@ function Live({
               >
                 ⚽ Gol subito
               </button>
-              {subitoZona !== null &&
+              {zonaSubitoEffettiva !== null &&
                 ESITI_TIRO.map((es) => (
                   <button
                     key={es.value}
@@ -1958,6 +1996,34 @@ function Live({
             ))}
           </ul>
         )}
+      </Modal>
+
+      {/* ----- MODAL: convocati, anche a partita iniziata ----- */}
+      <Modal
+        open={showConvocati}
+        onClose={() => setShowConvocati(false)}
+        title="Convocati"
+      >
+        <p className="text-xs text-slate-400 mb-3">
+          Chi aggiungi qui va in panchina ed è subito disponibile per un cambio.
+          A partita cominciata non c'è nessun tetto.
+        </p>
+        <div className="max-h-96 overflow-y-auto">
+          <GestioneConvocati
+            partita={partita}
+            rosa={rosa}
+            eventi={eventi}
+            stagioneId={stagioneId}
+          />
+        </div>
+        <div className="border-t border-slate-700 mt-3 pt-3">
+          <button
+            onClick={() => setShowConvocati(false)}
+            className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
+          >
+            Chiudi
+          </button>
+        </div>
       </Modal>
 
       {/* ----- MODAL: conferma fine tempo ----- */}

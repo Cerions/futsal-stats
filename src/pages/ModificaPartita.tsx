@@ -8,9 +8,16 @@ import { nomeCorto } from '../utils/giocatore'
 import { ordineRuolo } from '../db/ruoli'
 import TagSelector from '../components/TagSelector'
 import Modal from '../components/Modal'
+import GestioneConvocati from '../components/GestioneConvocati'
+import {
+  campiRiassegnati,
+  eventiDaRiassegnare,
+  type Riassegnazione,
+} from '../utils/riassegna'
 import type {
   EsitoTiro,
   Evento,
+  Giocatore,
   OrigineTiro,
   Schema,
   TagPartita,
@@ -25,6 +32,9 @@ import {
   origineComeInattiva,
   origineRichiedeBattuta,
   origineRichiedeSchema,
+  originiPerFronte,
+  pesoZona,
+  zonaImplicitaOrigine,
 } from '../db/zone'
 
 type TipoEventoNuovo =
@@ -35,6 +45,7 @@ type TipoEventoNuovo =
   | 'tiro'
   | 'tiro_subito'
   | 'inattiva'
+  | 'cambio'
 
 /** Eventi che si possono correggere a posteriori dalla lista. */
 function eventoModificabile(e: Evento): boolean {
@@ -44,7 +55,8 @@ function eventoModificabile(e: Evento): boolean {
     e.tipo === 'tiro' ||
     e.tipo === 'gol_subito' ||
     e.tipo === 'tiro_subito' ||
-    e.tipo === 'inattiva'
+    e.tipo === 'inattiva' ||
+    e.tipo === 'cambio'
   )
 }
 
@@ -73,6 +85,34 @@ function SelectZona({
         <option key={z.value} value={z.value}>
           {z.label}
           {soloCampo ? '' : ` — xG ${z.peso.toFixed(2)}`}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** Select riutilizzabile per un nostro giocatore. */
+function SelectGiocatore({
+  value,
+  onChange,
+  giocatori,
+  vuoto = 'Seleziona...',
+}: {
+  value: number | ''
+  onChange: (id: number | '') => void
+  giocatori: Giocatore[]
+  vuoto?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+    >
+      <option value="">{vuoto}</option>
+      {giocatori.map((g) => (
+        <option key={g.id} value={g.id}>
+          {nomeCorto(g)} {g.numero !== undefined ? `(${g.numero})` : ''}
         </option>
       ))}
     </select>
@@ -151,6 +191,9 @@ export default function ModificaPartita() {
     [partita?.stagioneId]
   )
 
+  // --- Convocati, richiudibili: di solito qui si viene per gli eventi ---
+  const [mostraConvocati, setMostraConvocati] = useState(false)
+
   // --- Modal: aggiungi evento ---
   const [showAggiungi, setShowAggiungi] = useState(false)
   const [tipoNuovo, setTipoNuovo] = useState<TipoEventoNuovo>('gol_fatto')
@@ -164,6 +207,16 @@ export default function ModificaPartita() {
   const [battutaNuova, setBattutaNuova] = useState<ZonaTiro | ''>('')
   const [schemaNuovo, setSchemaNuovo] = useState<number | ''>('')
   const [situazioneNuova, setSituazioneNuova] = useState<TipoInattiva>('corner')
+  const [esceNuovo, setEsceNuovo] = useState<number | ''>('')
+  const [entraNuovo, setEntraNuovo] = useState<number | ''>('')
+
+  // --- Modal: riassegnazione dopo una sostituzione aggiunta a mano ---
+  const [proposte, setProposte] = useState<Riassegnazione[] | null>(null)
+  const [scelte, setScelte] = useState<Set<number>>(new Set())
+  const [riassegnaVerso, setRiassegnaVerso] = useState<{
+    esceId: number
+    entraId: number
+  } | null>(null)
 
   // --- Modal: modifica evento esistente ---
   const [eventoInModifica, setEventoInModifica] = useState<Evento | null>(null)
@@ -175,6 +228,8 @@ export default function ModificaPartita() {
   const [editBattuta, setEditBattuta] = useState<ZonaTiro | ''>('')
   const [editSchema, setEditSchema] = useState<number | ''>('')
   const [editSituazione, setEditSituazione] = useState<TipoInattiva>('corner')
+  const [editEsce, setEditEsce] = useState<number | ''>('')
+  const [editEntra, setEditEntra] = useState<number | ''>('')
 
   if (!partita || !stagione || !avversari || !rosa || !eventi || !schemi) {
     return <div className="p-6">Caricamento...</div>
@@ -188,6 +243,25 @@ export default function ModificaPartita() {
   const rosaConvocati = rosa
     .filter((g) => partita.convocati.includes(g.id!))
     .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
+
+  /**
+   * La zona della conclusione. Il rigore si batte dal dischetto: se l'origine è
+   * quella decide lei, e il campo della zona sparisce. Per il fronte nostro il
+   * rigore fra le origini non c'è, quindi qui non cambia niente.
+   */
+  const zonaNuovaEffettiva: ZonaTiro | '' =
+    zonaImplicitaOrigine(origineNuova) ?? zonaNuova
+  const zonaEditEffettiva: ZonaTiro | '' =
+    zonaImplicitaOrigine(editOrigine) ?? editZona
+
+  /** Le origini da proporre per le conclusioni loro. */
+  const originiSubito = originiPerFronte('loro')
+
+  /** Nome breve di un giocatore, anche se non è più fra i convocati. */
+  const nomeDi = (id: number): string => {
+    const g = rosa.find((x) => x.id === id)
+    return g ? nomeCorto(g) : '???'
+  }
 
   // ===== Update info base partita =====
   async function aggiornaAvversario(nuovoId: number) {
@@ -227,6 +301,8 @@ export default function ModificaPartita() {
     setBattutaNuova('')
     setSchemaNuovo('')
     setSituazioneNuova('corner')
+    setEsceNuovo('')
+    setEntraNuovo('')
     setShowAggiungi(true)
   }
 
@@ -291,16 +367,16 @@ export default function ModificaPartita() {
         await db.eventi.add({
           ...base,
           tipo: 'gol_subito',
-          zona: zonaNuova === '' ? undefined : zonaNuova,
+          zona: zonaNuovaEffettiva === '' ? undefined : zonaNuovaEffettiva,
           origine: origineNuova,
         })
         break
       case 'tiro_subito': {
-        if (zonaNuova === '') return
+        if (zonaNuovaEffettiva === '') return
         await db.eventi.add({
           ...base,
           tipo: 'tiro_subito',
-          zona: zonaNuova,
+          zona: zonaNuovaEffettiva,
           esito: esitoNuovo,
           origine: origineNuova,
         })
@@ -318,8 +394,51 @@ export default function ModificaPartita() {
         })
         break
       }
+      case 'cambio': {
+        if (esceNuovo === '' || entraNuovo === '' || esceNuovo === entraNuovo) return
+        const esceId = Number(esceNuovo)
+        const entraId = Number(entraNuovo)
+        await db.eventi.add({
+          ...base,
+          tipo: 'cambio',
+          giocatoreEsceId: esceId,
+          giocatoreEntraId: entraId,
+        })
+        // Le giocate registrate su chi è uscito, dopo questo minuto, con ogni
+        // probabilità sono di chi è entrato. Le propongo, non le sposto da solo.
+        const daSpostare = eventiDaRiassegnare(eventi!, {
+          tempoGioco,
+          minuto,
+          esceId,
+          entraId,
+        })
+        if (daSpostare.length > 0) {
+          setProposte(daSpostare)
+          setScelte(new Set(daSpostare.map((r) => r.evento.id!)))
+          setRiassegnaVerso({ esceId, entraId })
+        }
+        break
+      }
     }
     setShowAggiungi(false)
+  }
+
+  // ===== Riassegnazione: sposta gli eventi spuntati sul subentrato =====
+  async function confermaRiassegnazione() {
+    if (proposte === null || riassegnaVerso === null) return
+    await db.transaction('rw', db.eventi, async () => {
+      for (const r of proposte) {
+        if (!scelte.has(r.evento.id!)) continue
+        await db.eventi.update(r.evento.id!, campiRiassegnati(r, riassegnaVerso.entraId))
+      }
+    })
+    chiudiRiassegnazione()
+  }
+
+  function chiudiRiassegnazione() {
+    setProposte(null)
+    setScelte(new Set())
+    setRiassegnaVerso(null)
   }
 
   // ===== Modifica gol esistente =====
@@ -333,6 +452,8 @@ export default function ModificaPartita() {
     setEditBattuta('')
     setEditSchema('')
     setEditSituazione('corner')
+    setEditEsce('')
+    setEditEntra('')
     switch (e.tipo) {
       case 'gol_fatto':
         setEditMarcatore(e.giocatoreId)
@@ -370,6 +491,12 @@ export default function ModificaPartita() {
         setEditMarcatore(0)
         setEditSituazione(e.situazione)
         setEditSchema(e.schemaId ?? '')
+        break
+      case 'cambio':
+        // i due giocatori hanno campi loro: quello generico non serve
+        setEditMarcatore(0)
+        setEditEsce(e.giocatoreEsceId)
+        setEditEntra(e.giocatoreEntraId)
         break
     }
   }
@@ -415,15 +542,21 @@ export default function ModificaPartita() {
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'gol_subito') {
       await db.eventi.update(eventoInModifica.id!, {
-        zona: editZona === '' ? undefined : editZona,
+        zona: zonaEditEffettiva === '' ? undefined : zonaEditEffettiva,
         origine: editOrigine,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro_subito') {
-      if (editZona === '') return
+      if (zonaEditEffettiva === '') return
       await db.eventi.update(eventoInModifica.id!, {
-        zona: editZona,
+        zona: zonaEditEffettiva,
         esito: editEsito,
         origine: editOrigine,
+      } as Partial<Evento>)
+    } else if (eventoInModifica.tipo === 'cambio') {
+      if (editEsce === '' || editEntra === '' || editEsce === editEntra) return
+      await db.eventi.update(eventoInModifica.id!, {
+        giocatoreEsceId: Number(editEsce),
+        giocatoreEntraId: Number(editEntra),
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'inattiva') {
       await db.eventi.update(eventoInModifica.id!, {
@@ -443,6 +576,7 @@ export default function ModificaPartita() {
     { value: 'tiro_subito', label: 'Tiro loro (non gol)' },
     { value: 'autogol_pro', label: 'Autogol avversario (gol per noi)' },
     { value: 'autogol_contro', label: 'Autogol nostro (gol per loro)' },
+    { value: 'cambio', label: 'Sostituzione' },
   ]
 
   // Che campi mostra il modale di modifica, in base al tipo di evento aperto.
@@ -452,10 +586,11 @@ export default function ModificaPartita() {
     tipoInModifica === 'tiro' ||
     tipoInModifica === 'autogol_contro'
   const editHaZona =
-    tipoInModifica === 'gol_fatto' ||
-    tipoInModifica === 'tiro' ||
-    tipoInModifica === 'gol_subito' ||
-    tipoInModifica === 'tiro_subito'
+    (tipoInModifica === 'gol_fatto' ||
+      tipoInModifica === 'tiro' ||
+      tipoInModifica === 'gol_subito' ||
+      tipoInModifica === 'tiro_subito') &&
+    zonaImplicitaOrigine(editOrigine) === null
   const editZonaOpzionale =
     tipoInModifica === 'gol_fatto' || tipoInModifica === 'gol_subito'
   const editHaEsito = tipoInModifica === 'tiro' || tipoInModifica === 'tiro_subito'
@@ -463,6 +598,7 @@ export default function ModificaPartita() {
   /** Sui subiti si sceglie l'origine, ma non schema né punto di battuta. */
   const editHaSoloOrigine =
     tipoInModifica === 'gol_subito' || tipoInModifica === 'tiro_subito'
+  const editHaCambio = tipoInModifica === 'cambio'
 
   const richiedeGiocatore =
     tipoNuovo === 'gol_fatto' ||
@@ -470,11 +606,13 @@ export default function ModificaPartita() {
     tipoNuovo === 'tiro'
   const richiedeAssist = tipoNuovo === 'gol_fatto'
   const mostraZona =
-    tipoNuovo === 'gol_fatto' ||
-    tipoNuovo === 'tiro' ||
-    tipoNuovo === 'gol_subito' ||
-    tipoNuovo === 'tiro_subito'
+    (tipoNuovo === 'gol_fatto' ||
+      tipoNuovo === 'tiro' ||
+      tipoNuovo === 'gol_subito' ||
+      tipoNuovo === 'tiro_subito') &&
+    zonaImplicitaOrigine(origineNuova) === null
   const zonaObbligatoria = tipoNuovo === 'tiro' || tipoNuovo === 'tiro_subito'
+  const richiedeCambio = tipoNuovo === 'cambio'
   // Origine e schema descrivono come costruiamo NOI l'azione: delle conclusioni
   // subite registriamo solo da dove sono partite e com'è finita.
   // Il corner ha lo schema ma non l'origine: è lui stesso una palla inattiva
@@ -531,6 +669,38 @@ export default function ModificaPartita() {
           <label className="block text-sm text-slate-400 mb-2">Tipo partita</label>
           <TagSelector value={partita.tag} onChange={aggiornaTag} />
         </div>
+      </section>
+
+      {/* ===== Convocati ===== */}
+      <section className="bg-slate-800 rounded-xl p-4 mb-4">
+        <div className="flex items-baseline justify-between mb-1">
+          <h2 className="text-lg font-semibold">
+            Convocati{' '}
+            <span className="text-slate-400 text-sm">
+              ({partita.convocati.length})
+            </span>
+          </h2>
+          <button
+            onClick={() => setMostraConvocati((v) => !v)}
+            className="text-sm text-slate-400 hover:text-slate-100"
+          >
+            {mostraConvocati ? 'Nascondi' : 'Modifica'}
+          </button>
+        </div>
+        {mostraConvocati && (
+          <div className="mt-3">
+            <p className="text-xs text-slate-400 mb-3">
+              Se ti sei accorto dopo che qualcuno era sceso in campo, aggiungilo
+              qui: poi con una sostituzione gli sposti addosso le sue giocate.
+            </p>
+            <GestioneConvocati
+              partita={partita}
+              rosa={rosa}
+              eventi={eventi}
+              stagioneId={partita.stagioneId}
+            />
+          </div>
+        )}
       </section>
 
       {/* ===== Lista eventi ===== */}
@@ -607,7 +777,14 @@ export default function ModificaPartita() {
             <label className="block text-sm text-slate-400 mb-1">Tipo evento</label>
             <select
               value={tipoNuovo}
-              onChange={(e) => setTipoNuovo(e.target.value as TipoEventoNuovo)}
+              onChange={(e) => {
+                // Le due liste di origini non coincidono (di là c'è il rigore,
+                // di qua il calcio d'inizio): passando da un fronte all'altro
+                // si riparte da capo, o resterebbe selezionato un valore che
+                // nella nuova lista non c'è.
+                setTipoNuovo(e.target.value as TipoEventoNuovo)
+                setOrigineNuova('azione')
+              }}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
             >
               {TIPI_EVENTO.map((t) => (
@@ -687,6 +864,48 @@ export default function ModificaPartita() {
             </div>
           )}
 
+          {richiedeCambio && (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Esce</label>
+                <SelectGiocatore
+                  value={esceNuovo}
+                  onChange={setEsceNuovo}
+                  giocatori={rosaConvocati}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Entra</label>
+                <SelectGiocatore
+                  value={entraNuovo}
+                  onChange={setEntraNuovo}
+                  giocatori={rosaConvocati.filter((g) => g.id !== esceNuovo)}
+                />
+              </div>
+              <p className="text-xs text-slate-400">
+                Dopo il salvataggio ti mostro cosa risulta fatto da chi esce, da
+                questo minuto in poi: potrai spostarlo su chi entra.
+              </p>
+            </>
+          )}
+
+          {mostraSoloOrigine && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Com'è nata</label>
+              <select
+                value={origineNuova}
+                onChange={(e) => setOrigineNuova(e.target.value as OrigineTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {originiSubito.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.icona} {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {mostraZona && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
@@ -701,20 +920,6 @@ export default function ModificaPartita() {
                 opzionale={!zonaObbligatoria}
               />
             </div>
-          )}
-
-          {mostraSoloOrigine && (
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={origineNuova === 'contropiede'}
-                onChange={(e) =>
-                  setOrigineNuova(e.target.checked ? 'contropiede' : 'azione')
-                }
-                className="w-4 h-4"
-              />
-              🏃 Su contropiede
-            </label>
           )}
 
           {mostraOrigine && (
@@ -816,7 +1021,9 @@ export default function ModificaPartita() {
               onClick={salvaNuovoEvento}
               disabled={
                 (richiedeGiocatore && marcatoreNuovo === '') ||
-                (zonaObbligatoria && zonaNuova === '')
+                (zonaObbligatoria && zonaNuovaEffettiva === '') ||
+                (richiedeCambio &&
+                  (esceNuovo === '' || entraNuovo === '' || esceNuovo === entraNuovo))
               }
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
@@ -824,6 +1031,73 @@ export default function ModificaPartita() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* ===== MODAL: sposta gli eventi sul subentrato ===== */}
+      <Modal
+        open={proposte !== null}
+        onClose={chiudiRiassegnazione}
+        title="Sposto queste giocate?"
+      >
+        {proposte !== null && riassegnaVerso !== null && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-slate-300">
+              Da quel minuto in poi risultano fatte da{' '}
+              <strong>{nomeDi(riassegnaVerso.esceId)}</strong>, che però era
+              uscito. Le sposto su{' '}
+              <strong className="text-emerald-400">
+                {nomeDi(riassegnaVerso.entraId)}
+              </strong>
+              ? Togli la spunta a quelle che erano davvero sue.
+            </p>
+            <ul className="flex flex-col gap-1 text-sm max-h-72 overflow-y-auto">
+              {proposte.map((r) => (
+                <li
+                  key={r.evento.id}
+                  className="bg-slate-900 rounded px-3 py-2 flex items-center gap-2"
+                >
+                  <input
+                    type="checkbox"
+                    checked={scelte.has(r.evento.id!)}
+                    onChange={() =>
+                      setScelte((prima) => {
+                        const dopo = new Set(prima)
+                        if (dopo.has(r.evento.id!)) dopo.delete(r.evento.id!)
+                        else dopo.add(r.evento.id!)
+                        return dopo
+                      })
+                    }
+                    className="w-4 h-4 shrink-0"
+                  />
+                  <span className="text-slate-500 font-mono shrink-0">
+                    T{r.evento.tempoGioco} • {r.evento.minuto}'
+                  </span>
+                  <span className="flex-1">
+                    {descriviEvento(r.evento, rosa, schemi)}
+                    {r.ruolo === 'assist' && (
+                      <span className="text-slate-500"> — solo l'assist</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 mt-1">
+              <button
+                onClick={chiudiRiassegnazione}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+              >
+                Lascia com'è
+              </button>
+              <button
+                onClick={confermaRiassegnazione}
+                disabled={scelte.size === 0}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+              >
+                Sposta {scelte.size}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ===== MODAL: modifica evento esistente ===== */}
@@ -841,6 +1115,8 @@ export default function ModificaPartita() {
             ? 'Modifica tiro loro'
             : eventoInModifica?.tipo === 'inattiva'
             ? 'Modifica palla inattiva'
+            : eventoInModifica?.tipo === 'cambio'
+            ? 'Modifica sostituzione'
             : 'Modifica autogol'
         }
       >
@@ -923,17 +1199,47 @@ export default function ModificaPartita() {
           )}
 
           {editHaSoloOrigine && (
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editOrigine === 'contropiede'}
-                onChange={(e) =>
-                  setEditOrigine(e.target.checked ? 'contropiede' : 'azione')
-                }
-                className="w-4 h-4"
-              />
-              🏃 Su contropiede
-            </label>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Com'è nata</label>
+              <select
+                value={editOrigine}
+                onChange={(e) => setEditOrigine(e.target.value as OrigineTiro)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              >
+                {originiSubito.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.icona} {o.label}
+                  </option>
+                ))}
+              </select>
+              {zonaImplicitaOrigine(editOrigine) !== null && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Zona fissata al dischetto — xGA{' '}
+                  {pesoZona(zonaImplicitaOrigine(editOrigine)!).toFixed(2)}.
+                </p>
+              )}
+            </div>
+          )}
+
+          {editHaCambio && (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Esce</label>
+                <SelectGiocatore
+                  value={editEsce}
+                  onChange={setEditEsce}
+                  giocatori={rosaConvocati}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Entra</label>
+                <SelectGiocatore
+                  value={editEntra}
+                  onChange={setEditEntra}
+                  giocatori={rosaConvocati.filter((g) => g.id !== editEsce)}
+                />
+              </div>
+            </>
           )}
 
           {editHaOrigine && (
@@ -1024,7 +1330,9 @@ export default function ModificaPartita() {
               onClick={salvaModificaEvento}
               disabled={
                 (editHaGiocatore && editMarcatore === '') ||
-                (editHaEsito && editZona === '')
+                (editHaEsito && zonaEditEffettiva === '') ||
+                (editHaCambio &&
+                  (editEsce === '' || editEntra === '' || editEsce === editEntra))
               }
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
