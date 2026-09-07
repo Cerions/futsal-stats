@@ -122,7 +122,67 @@ export function rendimentoPerPartita(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Secchielli da 5 minuti, dentro ciascun tempo
+// 3. Le quattro medie a partita
+// ---------------------------------------------------------------------------
+
+export interface MedieAmbito {
+  /** su quante partite è fatta la media */
+  partite: number
+  /** gol segnati a partita */
+  golFatti: number
+  /** xG prodotto a partita: quanto ci saremmo aspettati di segnare */
+  xg: number
+  /** gol subiti a partita */
+  golSubiti: number
+  /** xGA a partita: quanto era lecito aspettarsi di prendere */
+  xga: number
+}
+
+/**
+ * Le quattro medie a partita dell'ambito scelto.
+ *
+ * Sono nella stessa unità — gol — quindi stanno tutte sullo stesso asse e si
+ * confrontano a occhio: il divario fra segnato e creato dice come stiamo
+ * finalizzando, quello fra preso e concesso come sta parando il portiere.
+ */
+export function mediePerPartita(
+  partite: Partita[],
+  eventi: Evento[]
+): MedieAmbito {
+  const vuoto: MedieAmbito = {
+    partite: 0,
+    golFatti: 0,
+    xg: 0,
+    golSubiti: 0,
+    xga: 0,
+  }
+  if (partite.length === 0) return vuoto
+
+  const idPartite = new Set(partite.map((p) => p.id))
+  const suoi = eventi.filter((e) => idPartite.has(e.partitaId))
+  const { fatti, subiti } = risultatoPartita(suoi)
+
+  let xg = 0
+  let xga = 0
+  for (const e of suoi) {
+    const zn = zonaDiTiro(e, 'nostro')
+    if (zn !== null) xg += pesoZona(zn)
+    const zl = zonaDiTiro(e, 'loro')
+    if (zl !== null) xga += pesoZona(zl)
+  }
+
+  const n = partite.length
+  return {
+    partite: n,
+    golFatti: fatti / n,
+    xg: xg / n,
+    golSubiti: subiti / n,
+    xga: xga / n,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Secchielli da 5 minuti, dentro ciascun tempo
 // ---------------------------------------------------------------------------
 
 export interface Fascia {

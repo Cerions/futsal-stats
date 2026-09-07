@@ -2,10 +2,16 @@ import { useState } from 'react'
 import type { Evento, Giocatore, Partita } from '../../db/schema'
 import type { StatsGiocatore } from '../../utils/statistiche'
 import { statistichePerOrigine } from '../../utils/statistiche'
-import { andamentoPartita, perFasce, rendimentoPerPartita } from '../../utils/grafici'
+import {
+  andamentoPartita,
+  mediePerPartita,
+  perFasce,
+  rendimentoPerPartita,
+} from '../../utils/grafici'
 import { formatXG, originiPerFronte } from '../../db/zone'
 import { nomeCorto } from '../../utils/giocatore'
 import AndamentoXG from './AndamentoXG'
+import Medie from './Medie'
 import PerPartita from './PerPartita'
 import Fasce from './Fasce'
 import { BarreDivergenti, BarreOrizzontali } from './BarreOrizzontali'
@@ -70,10 +76,13 @@ export default function SezioneGrafici({
     ? []
     : rendimentoPerPartita(partite, eventi, nomeAvversario)
 
-  // ----- 2. fasce -----
+  // ----- 2. le quattro medie -----
+  const medie = mediePerPartita(partite, eventi)
+
+  // ----- 3. fasce -----
   const fasce = perFasce(partite, eventi)
 
-  // ----- 3. origini -----
+  // ----- 4. origini -----
   const definizioniOrigine = originiPerFronte(fronteOrigini)
   const origini = statistichePerOrigine(eventi, fronteOrigini)
     .filter((o) => o.tiri > 0 && definizioniOrigine.some((d) => d.value === o.origine))
@@ -83,21 +92,43 @@ export default function SezioneGrafici({
     return `${d?.icona ?? ''} ${d?.labelCorta ?? o.origine}`.trim()
   }
 
-  // ----- 4. giocatori -----
+  // ----- 5. giocatori -----
   const giocanti = stats
     .filter((s) => s.minutiGiocati > 0 || s.tiri > 0)
     .sort((a, b) => b.minutiGiocati - a.minutiGiocati)
-  const perXG = [...giocanti]
-    .filter((s) => s.tiri > 0)
-    .sort((a, b) => b.xG - a.xG)
-    .slice(0, 12)
-  const perPiuMeno = [...giocanti]
-    .sort((a, b) => b.golPro - b.golContro - (a.golPro - a.golContro))
-    .slice(0, 12)
+  // Tutti, senza tagli: con una rosa da quindici il grafico si allunga un po',
+  // ma non resta il dubbio su chi manchi e perché.
+  const perXG = [...giocanti].filter((s) => s.tiri > 0).sort((a, b) => b.xG - a.xG)
+  const perPiuMeno = [...giocanti].sort(
+    (a, b) => b.golPro - b.golContro - (a.golPro - a.golContro)
+  )
 
   return (
     <>
-      {/* ===== 1. Il racconto ===== */}
+      {/* ===== 1. Le quattro medie ===== */}
+      <Riquadro
+        titolo={unaSola ? 'Il bilancio della partita' : 'Media a partita'}
+        sottotitolo={
+          unaSola
+            ? 'A sinistra quanto abbiamo segnato e quanto abbiamo creato, a destra quanto abbiamo preso e quanto abbiamo concesso.'
+            : `Su ${medie.partite} partite. A sinistra quanto abbiamo segnato e quanto abbiamo creato, a destra quanto abbiamo preso e quanto abbiamo concesso: stessa scala, così i quattro numeri si confrontano fra loro.`
+        }
+      >
+        <Legenda
+          voci={[
+            { colore: COLORI.testo, label: 'Gol contati' },
+            { colore: COLORI.testo, label: 'Attesi (xG / xGA)', vuota: true },
+          ]}
+        />
+        <Medie medie={medie} />
+        <p className="text-xs text-slate-500 mt-1">
+          Segnato sopra creato vuol dire che stiamo finalizzando meglio delle
+          occasioni che ci costruiamo; preso sotto concesso, che il portiere sta
+          parando più del previsto.
+        </p>
+      </Riquadro>
+
+      {/* ===== 2. Il racconto ===== */}
       {unaSola ? (
         <Riquadro
           titolo="Racconto della partita"
@@ -129,7 +160,7 @@ export default function SezioneGrafici({
         </>
       )}
 
-      {/* ===== 2. Quando succedono le cose ===== */}
+      {/* ===== 3. Quando succedono le cose ===== */}
       <Riquadro
         titolo="Quando succedono le cose"
         sottotitolo="Fasce di 5 minuti dentro ogni tempo. Sopra lo zero quello che facciamo noi, sotto quello che subiamo."
@@ -157,7 +188,7 @@ export default function SezioneGrafici({
         <Fasce fasce={fasce} misura={misuraFasce} />
       </Riquadro>
 
-      {/* ===== 3. Da dove nascono ===== */}
+      {/* ===== 4. Da dove nascono ===== */}
       <Riquadro
         titolo="Da dove nascono le conclusioni"
         sottotitolo="Lunghezza della barra: quante conclusioni. La parte piena sono i gol, alla punta l'xG prodotto."
@@ -212,7 +243,7 @@ export default function SezioneGrafici({
         )}
       </Riquadro>
 
-      {/* ===== 4. I giocatori ===== */}
+      {/* ===== 5. I giocatori ===== */}
       <Riquadro
         titolo="Minuti giocati"
         sottotitolo="Chi ha retto il peso della partita."

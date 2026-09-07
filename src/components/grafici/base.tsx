@@ -1,7 +1,8 @@
 export function Legenda({
   voci,
 }: {
-  voci: { colore: string; label: string }[]
+  /** `vuota` disegna il quadratino a contorno, come le barre dei valori attesi. */
+  voci: { colore: string; label: string; vuota?: boolean }[]
 }) {
   return (
     <div className="flex items-center gap-4 flex-wrap text-xs text-slate-400 mb-2">
@@ -9,7 +10,11 @@ export function Legenda({
         <span key={v.label} className="flex items-center gap-1.5">
           <span
             className="inline-block w-3 h-3 rounded-sm"
-            style={{ backgroundColor: v.colore }}
+            style={
+              v.vuota
+                ? { border: `2px solid ${v.colore}` }
+                : { backgroundColor: v.colore }
+            }
           />
           {v.label}
         </span>

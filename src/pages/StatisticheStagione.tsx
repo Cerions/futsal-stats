@@ -18,6 +18,9 @@ import { ruoloShort, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
 import CampoTiri from '../components/CampoTiri'
 import SezioneGrafici from '../components/grafici/SezioneGrafici'
+import FiltroPartite from '../components/FiltroPartite'
+import { ePreset, partiteDelPreset } from '../utils/preset'
+import type { Preset } from '../utils/preset'
 import {
   formatXG,
   inattivaIcona,
@@ -151,25 +154,57 @@ export default function StatisticheStagione() {
   }
 
   // Le statistiche guardano sempre e solo le partite concluse. Qui si sceglie
-  // se guardarle tutte insieme o una alla volta: l'ambito scelto entra in
-  // tutte e tre le viste, tabelle e mappe comprese.
+  // quali: l'ambito entra in tutte e quattro le viste, tabelle e mappe comprese.
   const finite = [...partite]
     .filter((p) => p.stato === 'finita')
     .sort((a, b) => b.dataOra - a.dataOra)
   const partiteFinite = finite.length
 
-  // L'id sta nell'URL: così il link dalla pagina della partita funziona e la
-  // scelta sopravvive a un ricarico. Un id non più valido torna al totale.
-  const idNellUrl = Number(parametri.get('partita'))
-  const partitaScelta =
-    finite.find((p) => p.id === idNellUrl)?.id ?? null
+  // La scelta sta nell'URL, così sopravvive a un ricarico e si può linkare.
+  // «partita» al singolare è la forma vecchia, quella che usa il link dalla
+  // pagina della partita: continua a valere come selezione di una sola.
+  const paramPartite = parametri.get('partite')
+  const idsNellUrl = (paramPartite ?? parametri.get('partita') ?? '')
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && finite.some((p) => p.id === n))
+  const presetNellUrl = parametri.get('filtro')
+  // Una scelta a mano vince sul preset. «partite» presente vale come scelta
+  // anche quando è vuota — si può deselezionare tutto — mentre la vecchia
+  // «partita» con un id sparito torna al totale, come ha sempre fatto.
+  const aMano = paramPartite !== null || idsNellUrl.length > 0
+  const preset: Preset | null = aMano
+    ? null
+    : ePreset(presetNellUrl)
+    ? presetNellUrl
+    : 'tutte'
 
   const ambito =
-    partitaScelta === null ? finite : finite.filter((p) => p.id === partitaScelta)
-  const idAmbito = new Set(ambito.map((p) => p.id))
+    preset !== null
+      ? partiteDelPreset(finite, preset)
+      : finite.filter((p) => idsNellUrl.includes(p.id!))
+  const idAmbito = new Set(ambito.map((p) => p.id!))
   const eventiFiniti = eventi.filter((e) => idAmbito.has(e.partitaId))
-  const partitaCorrente =
-    partitaScelta === null ? null : ambito[0]
+  // Il link «aprila» e il titolo con il risultato hanno senso solo quando
+  // l'ambito è davvero una partita sola, comunque ci si sia arrivati.
+  const partitaCorrente = ambito.length === 1 ? ambito[0] : null
+
+  function scegliPreset(p: Preset) {
+    const nuovi = new URLSearchParams(parametri)
+    nuovi.delete('partite')
+    nuovi.delete('partita')
+    if (p === 'tutte') nuovi.delete('filtro')
+    else nuovi.set('filtro', p)
+    setParametri(nuovi, { replace: true })
+  }
+
+  function scegliPartite(ids: number[]) {
+    const nuovi = new URLSearchParams(parametri)
+    nuovi.delete('filtro')
+    nuovi.delete('partita')
+    nuovi.set('partite', ids.join(','))
+    setParametri(nuovi, { replace: true })
+  }
 
   const stats = calcolaStatistiche(rosa, ambito, eventiFiniti)
 
@@ -288,37 +323,24 @@ export default function StatisticheStagione() {
         Statistiche • {stagione.nome} •{' '}
         {partitaCorrente
           ? etichettaPartita(partitaCorrente)
-          : `${partiteFinite} ${
-              partiteFinite === 1 ? 'partita giocata' : 'partite giocate'
-            }`}
+          : `${ambito.length} ${
+              ambito.length === 1 ? 'partita' : 'partite'
+            } su ${partiteFinite}`}
       </p>
 
-      {/* Selettore ambito: tutta la stagione o una partita sola */}
+      {/* Su quali partite: preset, oppure una scelta a mano */}
       {partiteFinite > 0 && (
-        <div className="mb-3">
-          <select
-            value={partitaScelta ?? ''}
-            onChange={(e) => {
-              const v = e.target.value
-              const nuovi = new URLSearchParams(parametri)
-              if (v === '') nuovi.delete('partita')
-              else nuovi.set('partita', v)
-              setParametri(nuovi, { replace: true })
-            }}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold"
-          >
-            <option value="">
-              Tutta la stagione ({partiteFinite}{' '}
-              {partiteFinite === 1 ? 'partita' : 'partite'})
-            </option>
-            {finite.map((p) => (
-              <option key={p.id} value={p.id}>
-                {etichettaPartita(p)}
-              </option>
-            ))}
-          </select>
+        <>
+          <FiltroPartite
+            finite={finite}
+            preset={preset}
+            selezionate={idAmbito}
+            etichetta={etichettaPartita}
+            onPreset={scegliPreset}
+            onSelezione={scegliPartite}
+          />
           {partitaCorrente && (
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 -mt-1 mb-3">
               Stai guardando una partita sola.{' '}
               <Link
                 to={`/partita/${partitaCorrente.id}`}
@@ -329,7 +351,7 @@ export default function StatisticheStagione() {
               per il tabellone e il log eventi.
             </p>
           )}
-        </div>
+        </>
       )}
 
       {/* Selettore vista */}
@@ -360,6 +382,11 @@ export default function StatisticheStagione() {
         <p className="text-slate-500 italic mt-8 text-center">
           Nessuna partita conclusa. Le statistiche appariranno dopo la prima
           partita terminata.
+        </p>
+      ) : ambito.length === 0 ? (
+        <p className="text-slate-500 italic mt-8 text-center">
+          Nessuna partita selezionata: spuntane almeno una qui sopra, o torna a
+          «Tutte».
         </p>
       ) : vista === 'grafici' ? (
         <SezioneGrafici
