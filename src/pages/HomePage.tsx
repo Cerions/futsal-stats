@@ -5,6 +5,8 @@ import { db } from '../db/database'
 import { eliminaStagione } from '../db/cascade'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
+import ConfermaAzione from '../components/ConfermaAzione'
+import { useConferma } from '../utils/conferma'
 import type { Stagione } from '../db/schema'
 import { esportaStagione, nomeFileExport, scaricaJSON } from '../db/export'
 import { importaStagione, validaImport, leggiFileJSON } from '../db/import'
@@ -28,6 +30,8 @@ export default function HomePage() {
     () => db.stagioni.orderBy('dataCreazione').reverse().toArray(),
     []
   )
+
+  const conferma = useConferma()
 
   async function creaStagione() {
     const nome = nomeNuova.trim()
@@ -63,16 +67,14 @@ export default function HomePage() {
   }
 
   async function eliminaStagioneConferma(s: Stagione) {
-    const conferma = prompt(
-      `Sei sicuro di voler eliminare la stagione "${s.nome}"?\n` +
-        `Verranno cancellati TUTTI i giocatori, gli avversari, le partite e gli eventi.\n\n` +
-        `Per confermare, scrivi il nome della stagione qui sotto:`
-    )
-    if (conferma === null) return
-    if (conferma.trim() !== s.nome) {
-      alert('Nome non corrispondente. Eliminazione annullata.')
-      return
-    }
+    const ok = await conferma.chiedi({
+      titolo: `Eliminare «${s.nome}»?`,
+      messaggio:
+        'Vengono cancellati tutti i giocatori, gli avversari, gli schemi, le partite e gli eventi di questa stagione. Non si torna indietro.',
+      azione: 'Elimina la stagione',
+      parolaChiave: s.nome,
+    })
+    if (!ok) return
     await eliminaStagione(s.id!)
   }
 
@@ -319,6 +321,7 @@ export default function HomePage() {
           </div>
         </div>
       </Modal>
+      <ConfermaAzione {...conferma.props} />
     </div>
   )
 }

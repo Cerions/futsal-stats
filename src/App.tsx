@@ -6,6 +6,7 @@ import Partita from './pages/Partita'
 import UpdatePrompt from './components/UpdatePrompt'
 import ModificaPartita from './pages/ModificaPartita'
 import StatisticheStagione from './pages/StatisticheStagione'
+import DettaglioGiocatore from './pages/DettaglioGiocatore'
 import Cloud from './pages/Cloud'
 import SincronizzazioneAuto from './cloud/auto'
 
@@ -18,6 +19,10 @@ export default function App() {
           <Route path="/setup-stagione/:id" element={<SetupStagione />} />
           <Route path="/stagione/:id" element={<Dashboard />} />
           <Route path="/stagione/:id/statistiche" element={<StatisticheStagione />} />
+          <Route
+            path="/stagione/:id/statistiche/giocatore/:giocatoreId"
+            element={<DettaglioGiocatore />}
+          />
           <Route path="/partita/:id" element={<Partita />} />
           <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
           <Route path="/cloud" element={<Cloud />} />

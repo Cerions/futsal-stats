@@ -4,6 +4,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { nomeSquadra } from '../utils/stagione'
 import Modal from '../components/Modal'
+import ConfermaAzione from '../components/ConfermaAzione'
+import { useConferma } from '../utils/conferma'
+import { esportaStagione } from '../db/export'
+import { improntaDati } from '../cloud/impronta'
 import type { Stagione } from '../db/schema'
 import { cloudConfigurato, nomeDispositivo, rinominaDispositivo } from '../cloud/supabase'
 import { accedi, esci, registrati, useSessione } from '../cloud/auth'
@@ -30,6 +34,7 @@ function quando(iso: string | number): string {
 }
 
 export default function Cloud() {
+  const conferma = useConferma()
   const navigate = useNavigate()
   const { sessione, caricamento, email } = useSessione()
 
@@ -104,7 +109,49 @@ export default function Cloud() {
     await aggiornaElenco()
   }
 
+  /**
+   * Scaricare svuota la stagione locale e la riscrive con quella del cloud.
+   * Se in locale non c'è ancora nulla non si distrugge niente e si procede;
+   * se invece una copia esiste si chiede, e quando l'impronta dice che ci sono
+   * modifiche mai caricate lo si scrive nero su bianco: sono esattamente quelle
+   * che andrebbero perse.
+   */
+  async function confermaScarica(cloudId: string): Promise<boolean> {
+    const locale = await db.stagioni.filter((s) => s.cloudId === cloudId).first()
+    if (locale?.id === undefined) return true
+
+    // Se l'impronta non si riesce a calcolare si chiede comunque, con il testo
+    // prudente: meglio una domanda in più che un dato perso.
+    let daPerdere = false
+    try {
+      const dati = await esportaStagione(locale.id)
+      daPerdere =
+        locale.soloLettura !== true &&
+        locale.cloudImpronta !== undefined &&
+        improntaDati(dati) !== locale.cloudImpronta
+    } catch {
+      // resta false: si chiede comunque, solo con il testo prudente
+    }
+
+    return conferma.chiedi({
+      titolo: `Sostituire «${locale.nome}» con la copia del cloud?`,
+      messaggio: daPerdere ? (
+        <>
+          <span className="text-amber-300 font-semibold">
+            Su questo dispositivo ci sono modifiche che non hai ancora caricato.
+          </span>{' '}
+          Scaricando vengono cancellate e sostituite da quello che c'è sul
+          cloud. Se le vuoi tenere, carica prima.
+        </>
+      ) : (
+        'Il contenuto locale viene cancellato e riscritto con quello del cloud. Da quel che risulta è già allineato, quindi non dovresti perdere niente.'
+      ),
+      azione: 'Scarica e sostituisci',
+    })
+  }
+
   async function scarica(cloudId: string, soloLettura: boolean) {
+    if (!(await confermaScarica(cloudId))) return
     setInCorso(`down-${cloudId}`)
     setErrore(null)
     const esito = await scaricaStagione(cloudId, { soloLettura })
@@ -118,19 +165,26 @@ export default function Cloud() {
   }
 
   async function scollega(s: Stagione) {
-    if (!confirm('Scollegare questa stagione dal cloud? I dati locali restano.'))
-      return
+    const ok = await conferma.chiedi({
+      titolo: `Scollegare «${s.nome}» dal cloud?`,
+      messaggio:
+        'I dati su questo dispositivo restano tutti. Smette solo di sincronizzarsi: la copia sul cloud non viene toccata, e questa stagione non la vedrà più.',
+      azione: 'Scollega',
+    })
+    if (!ok) return
     await scollegaStagione(s.id!)
     await aggiornaElenco()
   }
 
   async function eliminaCloud(riga: RigaCloud) {
-    if (
-      !confirm(
-        `Eliminare "${riga.nome}" dal cloud? La copia sul dispositivo resta, ma gli altri dispositivi non la vedranno più.`
-      )
-    )
-      return
+    const ok = await conferma.chiedi({
+      titolo: `Eliminare «${riga.nome}» dal cloud?`,
+      messaggio:
+        'La copia su questo dispositivo resta. Sparisce quella sul cloud, quindi gli altri dispositivi e chi ce l\'ha condivisa non la vedranno più.',
+      azione: 'Elimina dal cloud',
+      parolaChiave: riga.nome,
+    })
+    if (!ok) return
     const err = await eliminaDalCloud(riga.id)
     if (err) setErrore(err)
     await aggiornaElenco()
@@ -536,6 +590,8 @@ export default function Cloud() {
           </button>
         </div>
       </Modal>
+
+      <ConfermaAzione {...conferma.props} />
     </Guscio>
   )
 }

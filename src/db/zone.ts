@@ -184,8 +184,8 @@ export function inattivaIcona(t: TipoInattiva): string {
 }
 
 /**
- * Le origini: gioco aperto, contropiede, più le quattro palle inattive.
- * Solo le inattive hanno schemi; azione e contropiede no, sono gioco in
+ * Le origini: gioco aperto, contropiede, recupero alto, più le quattro palle
+ * inattive. Solo le inattive hanno schemi; le prime tre no, sono gioco in
  * movimento e non c'è niente di preparato da scegliere.
  */
 export const ORIGINI_TIRO: DefinizioneOrigine[] = [
@@ -202,6 +202,14 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
     label: 'Contropiede',
     labelCorta: 'Contropiede',
     icona: '🏃',
+    richiedeBattuta: false,
+    richiedeSchema: false,
+  },
+  {
+    value: 'recupero',
+    label: 'Recupero alto',
+    labelCorta: 'Recupero',
+    icona: '🔥',
     richiedeBattuta: false,
     richiedeSchema: false,
   },
@@ -233,13 +241,15 @@ const MAPPA_ORIGINI = new Map(TUTTE_LE_ORIGINI.map((o) => [o.value, o]))
 /**
  * Le origini che ha senso mostrare, per fronte.
  *
- * Da parte nostra: azione, contropiede e le quattro palle inattive, ognuna con
- * i suoi schemi. Il rigore no, perché di là è già la zona 'RIGORE'.
+ * Da parte nostra: azione, contropiede, recupero alto e le quattro palle
+ * inattive, ognuna con i suoi schemi. Il rigore no, perché di là è già la zona
+ * 'RIGORE'.
  *
  * Da parte loro la lista è diversa. Gli schemi non c'entrano — sono i nostri —
  * e il calcio d'inizio nemmeno, non ci hanno mai segnato da lì. Restano le
  * situazioni che quando prendi gol vuoi sapere: rigore, punizione, corner,
- * rimessa, più il contropiede. «Resto del gioco» raccoglie tutto il resto.
+ * rimessa, più contropiede e recupero alto (il loro pressing sulla nostra
+ * costruzione). «Resto del gioco» raccoglie tutto il resto.
  */
 export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
   if (fronte === 'nostro') return ORIGINI_TIRO
@@ -248,6 +258,7 @@ export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
   return [
     { ...azione, label: 'Resto del gioco', labelCorta: 'Resto' },
     di('contropiede'),
+    di('recupero'),
     di('rigore'),
     di('piazzato'),
     di('corner'),

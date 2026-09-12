@@ -152,6 +152,7 @@ async function popolaStagione(data: ExportData, nuovaStagioneId: number) {
       avversarioId: mappaAvversari.get(p.avversarioId) ?? 0,
       dataOra: p.dataOra,
       tag: p.tag,
+      campo: p.campo,
       config: p.config,
       convocati: p.convocati.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),
       titolari: p.titolari.map((id) => mappaGiocatori.get(id) ?? 0).filter((x) => x !== 0),

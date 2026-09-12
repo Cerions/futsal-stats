@@ -2,116 +2,63 @@ import { useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
-import {
-  calcolaStatistiche,
-  conteggiPerZona,
-  contaInattive,
-  contaTiri,
-  risultatoPartita,
-  statistichePerOrigine,
-  statistichePerSchema,
-} from '../utils/statistiche'
-import type { StatsGiocatore } from '../utils/statistiche'
-import { nomeCorto } from '../utils/giocatore'
+import { calcolaStatistiche, risultatoPartita } from '../utils/statistiche'
+import { statistichePortieri } from '../utils/portieri'
 import { formatData } from '../utils/format'
-import { ruoloShort, ordineRuolo } from '../db/ruoli'
+import { ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
-import CampoTiri from '../components/CampoTiri'
 import SezioneGrafici from '../components/grafici/SezioneGrafici'
 import FiltroPartite from '../components/FiltroPartite'
 import { ePreset, partiteDelPreset } from '../utils/preset'
 import type { Preset } from '../utils/preset'
+import VistaSquadra from '../components/statistiche/VistaSquadra'
+import VistaPortieri from '../components/statistiche/VistaPortieri'
+import VistaQuintetti from '../components/statistiche/VistaQuintetti'
+import VistaInattive from '../components/statistiche/VistaInattive'
 import {
-  formatXG,
-  inattivaIcona,
-  inattivaLabel,
-  origineIcona,
-  origineLabel,
-  originiPerFronte,
-  xgTotale,
-  ZONE_TIRO,
-} from '../db/zone'
-import type { Fronte } from '../db/zone'
-import type { OrigineTiro } from '../db/schema'
+  TabellaGenerali,
+  TabellaTiri,
+} from '../components/statistiche/VistaGiocatori'
+import { valoreColonna } from '../utils/colonne'
+import type { ColonnaOrdinabile, Ordinamento } from '../utils/colonne'
 
-type ColonnaOrdinabile =
-  | 'giocatore'
-  | 'presenze'
-  | 'partiteGiocate'
-  | 'minutiGiocati'
-  | 'gol'
-  | 'assist'
-  | 'autogol'
-  | 'golPro'
-  | 'golContro'
-  | 'plusMinus'
-  | 'tiri'
-  | 'tiriInPorta'
-  | 'xG'
-  | 'xGDiff'
-  | 'conversione'
+/**
+ * Le statistiche, divise per soggetto invece che per tipo di numero.
+ *
+ * Prima era una pagina sola con quattro schede, e ogni aggiunta la allungava.
+ * Ora il primo livello dice DI CHI si parla — la squadra, i giocatori, i
+ * portieri, i quintetti — e il secondo, dove serve, che taglio dare. È la
+ * domanda che ci si fa arrivando qui: «come sta andando la squadra» e «come sta
+ * andando Rossi» non si leggono nella stessa tabella.
+ */
 
-type Vista = 'generali' | 'tiri' | 'grafici' | 'inattive'
+type Sezione = 'squadra' | 'giocatori' | 'portieri' | 'quintetti'
 
-/** Percentuale realizzativa: gol su tiri. -1 se non ha mai tirato. */
-function conversione(s: StatsGiocatore): number {
-  return s.tiri > 0 ? s.gol / s.tiri : -1
+/** Le sotto-schede, per le sezioni che ne hanno. */
+const SOTTO: Record<Sezione, { valore: string; label: string }[]> = {
+  squadra: [
+    { valore: 'riepilogo', label: 'Riepilogo' },
+    { valore: 'grafici', label: 'Grafici' },
+    { valore: 'inattive', label: 'Palle inattive' },
+  ],
+  giocatori: [
+    { valore: 'generali', label: 'Generali' },
+    { valore: 'tiri', label: 'Tiri & xG' },
+    { valore: 'grafici', label: 'Grafici' },
+  ],
+  portieri: [],
+  quintetti: [],
 }
 
-/** Stato dell'ordinamento, passato agli header cliccabili. */
-interface Ordinamento {
-  colonna: ColonnaOrdinabile
-  discendente: boolean
-  cambia: (c: ColonnaOrdinabile) => void
-}
+const SEZIONI: { valore: Sezione; label: string; icona: string }[] = [
+  { valore: 'squadra', label: 'Squadra', icona: '🏆' },
+  { valore: 'giocatori', label: 'Giocatori', icona: '👤' },
+  { valore: 'portieri', label: 'Portieri', icona: '🧤' },
+  { valore: 'quintetti', label: 'Quintetti', icona: '🔁' },
+]
 
-/** Header di colonna numerica, cliccabile per ordinare. */
-function Th({
-  children,
-  col,
-  ord,
-}: {
-  children: React.ReactNode
-  col: ColonnaOrdinabile
-  ord: Ordinamento
-}) {
-  const attivo = col === ord.colonna
-  return (
-    <th
-      onClick={() => ord.cambia(col)}
-      className={`px-2 py-2 text-right text-xs font-semibold cursor-pointer select-none ${
-        attivo ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-      }`}
-    >
-      {children}
-      {attivo && <span className="ml-1">{ord.discendente ? '↓' : '↑'}</span>}
-    </th>
-  )
-}
-
-/** Prima colonna: resta agganciata a sinistra durante lo scroll orizzontale. */
-function ThGiocatore({ ord }: { ord: Ordinamento }) {
-  const attivo = ord.colonna === 'giocatore'
-  return (
-    <th
-      onClick={() => ord.cambia('giocatore')}
-      className={`px-2 py-2 text-left text-xs font-semibold cursor-pointer select-none sticky left-0 bg-slate-900 ${
-        attivo ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-      }`}
-    >
-      Giocatore
-      {attivo && <span className="ml-1">{ord.discendente ? '↓' : '↑'}</span>}
-    </th>
-  )
-}
-
-function TdGiocatore({ s }: { s: StatsGiocatore }) {
-  return (
-    <td className="px-2 py-2 sticky left-0 bg-slate-900">
-      <div className="font-medium">{nomeCorto(s.giocatore)}</div>
-      <div className="text-xs text-slate-500">{ruoloShort(s.giocatore.ruolo)}</div>
-    </td>
-  )
+function eSezione(v: string | null): v is Sezione {
+  return v !== null && SEZIONI.some((s) => s.valore === v)
 }
 
 export default function StatisticheStagione() {
@@ -145,16 +92,13 @@ export default function StatisticheStagione() {
   const [parametri, setParametri] = useSearchParams()
   const [colonna, setColonna] = useState<ColonnaOrdinabile>('gol')
   const [discendente, setDiscendente] = useState(true)
-  const [vista, setVista] = useState<Vista>('generali')
-  const [fronteMappa, setFronteMappa] = useState<Fronte>('nostro')
-  const [fronteOrigini, setFronteOrigini] = useState<Fronte>('nostro')
 
   if (!stagione || !rosa || !partite || !eventi || !schemi || !avversari) {
     return <div className="p-6">Caricamento...</div>
   }
 
   // Le statistiche guardano sempre e solo le partite concluse. Qui si sceglie
-  // quali: l'ambito entra in tutte e quattro le viste, tabelle e mappe comprese.
+  // quali: l'ambito entra in tutte le sezioni, tabelle e mappe comprese.
   const finite = [...partite]
     .filter((p) => p.stato === 'finita')
     .sort((a, b) => b.dataOra - a.dataOra)
@@ -189,6 +133,17 @@ export default function StatisticheStagione() {
   // l'ambito è davvero una partita sola, comunque ci si sia arrivati.
   const partitaCorrente = ambito.length === 1 ? ambito[0] : null
 
+  // Anche la scheda aperta sta nell'URL: si torna indietro dal dettaglio di un
+  // giocatore e si ritrova dov'eravamo, e un link porta dove volevi mandarlo.
+  const sezNellUrl = parametri.get('sez')
+  const sezione: Sezione = eSezione(sezNellUrl) ? sezNellUrl : 'squadra'
+  const sottoDisponibili = SOTTO[sezione]
+  const sottoNellUrl = parametri.get('vista')
+  const sotto =
+    sottoDisponibili.find((s) => s.valore === sottoNellUrl)?.valore ??
+    sottoDisponibili[0]?.valore ??
+    ''
+
   function scegliPreset(p: Preset) {
     const nuovi = new URLSearchParams(parametri)
     nuovi.delete('partite')
@@ -206,7 +161,32 @@ export default function StatisticheStagione() {
     setParametri(nuovi, { replace: true })
   }
 
+  function scegliSezione(s: Sezione) {
+    const nuovi = new URLSearchParams(parametri)
+    if (s === 'squadra') nuovi.delete('sez')
+    else nuovi.set('sez', s)
+    // La sotto-scheda di prima potrebbe non esistere qui: si riparte dalla prima.
+    nuovi.delete('vista')
+    setParametri(nuovi, { replace: true })
+    if (s === 'giocatori') {
+      setColonna('gol')
+      setDiscendente(true)
+    }
+  }
+
+  function scegliSotto(v: string) {
+    const nuovi = new URLSearchParams(parametri)
+    nuovi.set('vista', v)
+    setParametri(nuovi, { replace: true })
+    // L'ordinamento corrente potrebbe essere su una colonna non visibile.
+    if (sezione === 'giocatori') {
+      setColonna(v === 'tiri' ? 'xG' : 'gol')
+      setDiscendente(true)
+    }
+  }
+
   const stats = calcolaStatistiche(rosa, ambito, eventiFiniti)
+  const portieri = statistichePortieri(rosa, ambito, eventiFiniti, stats)
 
   const nomeAvversario = (id: number) =>
     avversari.find((a) => a.id === id)?.nome ?? '???'
@@ -216,92 +196,29 @@ export default function StatisticheStagione() {
     )
     return `${formatData(p.dataOra)} · ${nomeAvversario(p.avversarioId)} · ${fatti}-${subiti}`
   }
-  const conteggiZone = conteggiPerZona(eventiFiniti)
-  const xgStagione = xgTotale(eventiFiniti)
-  // Fronte avversario: mappa e xGA di quello che ci hanno tirato addosso
-  const conteggiZoneSubiti = conteggiPerZona(eventiFiniti, 'loro')
-  const xgaStagione = xgTotale(eventiFiniti, 'loro')
-  const tiriNostri = contaTiri(eventiFiniti, 'nostro')
-  const tiriLoro = contaTiri(eventiFiniti, 'loro')
-  const golSubitiTotali = eventiFiniti.filter(
-    (e) => e.tipo === 'gol_subito' || e.tipo === 'autogol_contro'
-  ).length
 
-  const golSenzaZona = stats.reduce((t, s) => t + s.golSenzaZona, 0)
-  // Le due liste non coincidono: di là c'è il rigore e non c'è il calcio
-  // d'inizio, e «azione» si chiama «resto del gioco».
-  const definizioniOrigine = originiPerFronte(fronteOrigini)
-  // Nell'ordine in cui le origini si presentano altrove, non in quello interno.
-  const conteggiOrigine = statistichePerOrigine(eventiFiniti, fronteOrigini)
-  const perOrigine = definizioniOrigine
-    .map((d) => conteggiOrigine.find((o) => o.origine === d.value))
-    .filter((o) => o !== undefined)
-  const etichettaOrigine = (o: OrigineTiro) =>
-    definizioniOrigine.find((d) => d.value === o)?.label ?? origineLabel(o)
-  // Gli autogol hanno una colonna solo dal lato nostro: dei nostri autogol non
-  // registriamo com'erano nati, e una colonna sempre vuota è solo rumore.
-  const autogolProvocati = perOrigine.reduce((n, o) => n + o.autogol, 0)
-  const mostraAutogol = fronteOrigini === 'nostro'
-  const perSchema = statistichePerSchema(eventiFiniti, schemi)
-  const inattiveStagione = contaInattive(eventiFiniti)
+  /** Il dettaglio di un giocatore, con lo stesso ambito di partite addosso. */
+  const linkDettaglio = (giocatoreId: number) => {
+    const q = parametri.toString()
+    return `/stagione/${stagioneId}/statistiche/giocatore/${giocatoreId}${
+      q ? `?${q}` : ''
+    }`
+  }
 
   function cambiaOrdinamento(nuovaColonna: ColonnaOrdinabile) {
     if (nuovaColonna === colonna) {
       setDiscendente(!discendente)
     } else {
       setColonna(nuovaColonna)
-      // default: descendente per numeri, ascendente per giocatore
+      // default: discendente per i numeri, ascendente per il nome
       setDiscendente(nuovaColonna !== 'giocatore')
     }
   }
 
-  function valore(s: StatsGiocatore, c: ColonnaOrdinabile): number | string {
-    switch (c) {
-      case 'giocatore':
-        return `${s.giocatore.cognome} ${s.giocatore.nome}`.toLowerCase()
-      case 'presenze':
-        return s.presenze
-      case 'partiteGiocate':
-        return s.partiteGiocate
-      case 'minutiGiocati':
-        return s.minutiGiocati
-      case 'gol':
-        return s.gol
-      case 'assist':
-        return s.assist
-      case 'autogol':
-        return s.autogol
-      case 'golPro':
-        return s.golPro
-      case 'golContro':
-        return s.golContro
-      case 'plusMinus':
-        return s.golPro - s.golContro
-      case 'tiri':
-        return s.tiri
-      case 'tiriInPorta':
-        return s.tiriInPorta
-      case 'xG':
-        return s.xG
-      case 'xGDiff':
-        return s.gol - s.xG
-      case 'conversione':
-        return conversione(s)
-    }
-  }
-
-  function cambiaVista(v: Vista) {
-    setVista(v)
-    // L'ordinamento corrente potrebbe essere su una colonna non visibile:
-    // riportiamolo su qualcosa di sensato per la vista scelta.
-    setColonna(v === 'tiri' ? 'xG' : 'gol')
-    setDiscendente(true)
-  }
-
   const statsOrdinate = [...stats].sort((a, b) => {
-    const va = valore(a, colonna)
-    const vb = valore(b, colonna)
-    // Fallback secondario: per ruolo
+    const va = valoreColonna(a, colonna)
+    const vb = valoreColonna(b, colonna)
+    // A parità, per ruolo.
     if (va === vb) return ordineRuolo(a.giocatore.ruolo) - ordineRuolo(b.giocatore.ruolo)
     if (typeof va === 'number' && typeof vb === 'number') {
       return discendente ? vb - va : va - vb
@@ -354,25 +271,42 @@ export default function StatisticheStagione() {
         </>
       )}
 
-      {/* Selettore vista */}
+      {/* Primo livello: di chi parliamo */}
       {partiteFinite > 0 && (
-        <div className="flex gap-1 bg-slate-800 p-1 rounded-lg mb-4">
-          {([
-            { v: 'generali' as Vista, label: 'Generali' },
-            { v: 'tiri' as Vista, label: 'Tiri & xG' },
-            { v: 'grafici' as Vista, label: 'Grafici' },
-            { v: 'inattive' as Vista, label: 'Palle inattive' },
-          ]).map(({ v, label }) => (
+        <div className="grid grid-cols-4 gap-1 bg-slate-800 p-1 rounded-lg mb-2">
+          {SEZIONI.map((s) => (
             <button
-              key={v}
-              onClick={() => cambiaVista(v)}
-              className={`flex-1 px-2 py-1.5 rounded-md text-sm font-semibold whitespace-nowrap ${
-                vista === v
+              key={s.valore}
+              data-sezione={s.valore}
+              onClick={() => scegliSezione(s.valore)}
+              className={`px-1 py-2 rounded-md text-xs sm:text-sm font-semibold ${
+                sezione === s.valore
                   ? 'bg-slate-700 text-slate-100'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {label}
+              <span className="block sm:inline sm:mr-1">{s.icona}</span>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Secondo livello: che taglio */}
+      {partiteFinite > 0 && sottoDisponibili.length > 0 && (
+        <div className="flex gap-1 mb-4 text-sm">
+          {sottoDisponibili.map((s) => (
+            <button
+              key={s.valore}
+              data-sotto={s.valore}
+              onClick={() => scegliSotto(s.valore)}
+              className={`px-3 py-1 rounded-full font-medium ${
+                sotto === s.valore
+                  ? 'bg-slate-700 text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {s.label}
             </button>
           ))}
         </div>
@@ -388,7 +322,32 @@ export default function StatisticheStagione() {
           Nessuna partita selezionata: spuntane almeno una qui sopra, o torna a
           «Tutte».
         </p>
-      ) : vista === 'grafici' ? (
+      ) : sezione === 'squadra' ? (
+        sotto === 'grafici' ? (
+          <SezioneGrafici
+            partite={ambito}
+            eventi={eventiFiniti}
+            rosa={rosa}
+            stats={stats}
+            nomeAvversario={nomeAvversario}
+            nomeSquadra={nomeSquadra(stagione)}
+            ambito="squadra"
+          />
+        ) : sotto === 'inattive' ? (
+          <VistaInattive eventi={eventiFiniti} schemi={schemi} />
+        ) : (
+          <VistaSquadra partite={ambito} eventi={eventiFiniti} />
+        )
+      ) : sezione === 'portieri' ? (
+        <VistaPortieri portieri={portieri} />
+      ) : sezione === 'quintetti' ? (
+        <VistaQuintetti
+          partite={ambito}
+          eventi={eventiFiniti}
+          rosa={rosa}
+          nomeAvversario={nomeAvversario}
+        />
+      ) : sotto === 'grafici' ? (
         <SezioneGrafici
           partite={ambito}
           eventi={eventiFiniti}
@@ -396,474 +355,36 @@ export default function StatisticheStagione() {
           stats={stats}
           nomeAvversario={nomeAvversario}
           nomeSquadra={nomeSquadra(stagione)}
+          ambito="giocatori"
         />
-      ) : vista === 'inattive' ? (
+      ) : sotto === 'tiri' ? (
         <>
-          {/* Resa per tipo di situazione */}
-          <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-            Da cosa nascono le conclusioni
-          </h2>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            {(
-              [
-                ['nostro', 'Nostre'],
-                ['loro', 'Subite'],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                onClick={() => setFronteOrigini(v)}
-                className={`py-1.5 rounded-lg text-sm font-semibold ${
-                  fronteOrigini === v
-                    ? v === 'nostro'
-                      ? 'bg-emerald-600'
-                      : 'bg-red-600'
-                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="overflow-x-auto -mx-4 px-4 mb-6">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 text-xs text-slate-400">
-                  <th className="px-2 py-2 text-left font-semibold">Situazione</th>
-                  <th className="px-2 py-2 text-right font-semibold">Tiri</th>
-                  <th className="px-2 py-2 text-right font-semibold">Gol</th>
-                  {mostraAutogol && (
-                    <th
-                      className="px-2 py-2 text-right font-semibold"
-                      title="Autogol avversari provocati da questa situazione"
-                    >
-                      AG
-                    </th>
-                  )}
-                  <th className="px-2 py-2 text-right font-semibold">Conv.</th>
-                  <th className="px-2 py-2 text-right font-semibold">xG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {perOrigine.map((o) => (
-                  <tr
-                    key={o.origine}
-                    className="border-b border-slate-800/50 hover:bg-slate-800/30"
-                  >
-                    <td className="px-2 py-2">
-                      <span className="mr-1">{origineIcona(o.origine)}</span>
-                      {etichettaOrigine(o.origine)}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums">{o.tiri}</td>
-                    <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                      {o.gol}
-                    </td>
-                    {mostraAutogol && (
-                      <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                        {o.autogol === 0 ? '—' : o.autogol}
-                      </td>
-                    )}
-                    <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                      {o.tiri === 0 ? '—' : `${Math.round((o.gol / o.tiri) * 100)}%`}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
-                      {formatXG(o.xG)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {mostraAutogol && autogolProvocati > 0 && (
-            <p className="text-xs text-slate-500 -mt-4 mb-6">
-              <strong className="text-slate-400">AG</strong> sono gli autogol che
-              abbiamo provocato: contano nel risultato ma non fra i tiri, quindi
-              stanno fuori da conversione e xG.
+          <TabellaTiri stats={statsOrdinate} ord={ord} dettaglio={linkDettaglio} />
+          <div className="mt-6 text-xs text-slate-500 space-y-1">
+            <p>
+              <strong className="text-slate-400">Tiri</strong>: conclusioni totali
+              (un gol è un tiro riuscito) •{' '}
+              <strong className="text-slate-400">TP</strong>: tiri in porta (gol e
+              tiri parati) • <strong className="text-slate-400">Conv.</strong>: gol
+              su tiri
             </p>
-          )}
-
-          {/* Resa degli schemi, una tabella per situazione */}
-          <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-            Schemi
-            <span className="ml-2 normal-case tracking-normal text-slate-500 font-normal">
-              {inattiveStagione} palle inattive battute
-            </span>
-          </h2>
-
-          {perSchema.every((g) => g.righe.length === 0) ? (
-            <p className="text-slate-500 italic text-sm">
-              Nessuno schema definito e nessuna palla inattiva registrata. Gli
-              schemi si aggiungono dal setup della stagione.
+            <p>
+              <strong className="text-slate-400">xG</strong>: gol attesi in base
+              alla zona di tiro • <strong className="text-slate-400">G−xG</strong>:
+              quanto ha segnato in più (verde) o in meno (rosso) rispetto a quello
+              che le sue conclusioni valevano
             </p>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {perSchema
-                .filter((g) => g.righe.length > 0)
-                .map((g) => (
-                  <div key={g.tipo}>
-                    <h3 className="text-sm font-semibold text-slate-300 mb-1">
-                      <span className="mr-1">{inattivaIcona(g.tipo)}</span>
-                      {inattivaLabel(g.tipo)}
-                      <span className="ml-2 text-slate-500 font-normal">
-                        {g.battute} {g.battute === 1 ? 'battuta' : 'battute'} ·{' '}
-                        {g.tiri} {g.tiri === 1 ? 'tiro' : 'tiri'} · {g.gol} gol
-                      </span>
-                    </h3>
-                    <div className="overflow-x-auto -mx-4 px-4">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-700 text-xs text-slate-400">
-                            <th className="px-2 py-2 text-left font-semibold">
-                              Schema
-                            </th>
-                            <th className="px-2 py-2 text-right font-semibold">
-                              Battute
-                            </th>
-                            <th className="px-2 py-2 text-right font-semibold">
-                              Tiri
-                            </th>
-                            <th className="px-2 py-2 text-right font-semibold">
-                              Gol
-                            </th>
-                            <th
-                              className="px-2 py-2 text-right font-semibold"
-                              title="Autogol avversari provocati da questo schema"
-                            >
-                              AG
-                            </th>
-                            <th className="px-2 py-2 text-right font-semibold">
-                              Tiri/battuta
-                            </th>
-                            <th className="px-2 py-2 text-right font-semibold">xG</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {g.righe.map((r) => (
-                            <tr
-                              key={r.schema?.id ?? `${g.tipo}-nessuno`}
-                              className="border-b border-slate-800/50 hover:bg-slate-800/30"
-                            >
-                              <td className="px-2 py-2">
-                                <div className="font-medium">
-                                  {r.schema?.nome ?? (
-                                    <span className="text-slate-500 italic">
-                                      Senza schema
-                                    </span>
-                                  )}
-                                </div>
-                                {r.schema?.note && (
-                                  <div className="text-xs text-slate-500">
-                                    {r.schema.note}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums">
-                                {r.battute}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums">
-                                {r.tiri}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                                {r.gol}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                                {r.autogol === 0 ? '—' : r.autogol}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                                {r.battute === 0
-                                  ? '—'
-                                  : (r.tiri / r.battute).toFixed(2)}
-                              </td>
-                              <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
-                                {formatXG(r.xG)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-
-          <p className="text-xs text-slate-500 mt-4">
-            La battuta e la conclusione che ne nasce sono due eventi separati:{' '}
-            <strong className="text-slate-400">Battute</strong> conta quante volte
-            hai giocato quello schema,{' '}
-            <strong className="text-slate-400">Tiri</strong> quante volte ne è
-            uscita una conclusione. Il rapporto tra i due dice se lo schema
-            produce o gira a vuoto.{' '}
-            <strong className="text-slate-400">AG</strong> sono gli autogol
-            avversari che lo schema ha provocato: gol veri, ma senza un tiro
-            nostro dietro, quindi fuori dalle altre colonne.
-          </p>
+            <p>Tocca un nome per la sua scheda, con la mappa dei tiri.</p>
+          </div>
         </>
-      ) : vista === 'generali' ? (
-        <div className="overflow-x-auto -mx-4 px-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <ThGiocatore ord={ord} />
-                <Th col="presenze" ord={ord}>Pres.</Th>
-                <Th col="partiteGiocate" ord={ord}>PG</Th>
-                <Th col="minutiGiocati" ord={ord}>Min</Th>
-                <Th col="gol" ord={ord}>Gol</Th>
-                <Th col="assist" ord={ord}>Ass</Th>
-                <Th col="autogol" ord={ord}>Aut</Th>
-                <Th col="golPro" ord={ord}>G+</Th>
-                <Th col="golContro" ord={ord}>G-</Th>
-                <Th col="plusMinus" ord={ord}>+/-</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {statsOrdinate.map((s) => {
-                const plusMinus = s.golPro - s.golContro
-                return (
-                  <tr
-                    key={s.giocatore.id}
-                    className="border-b border-slate-800/50 hover:bg-slate-800/30"
-                  >
-                    <TdGiocatore s={s} />
-                    <td className="px-2 py-2 text-right tabular-nums">
-                      {s.presenze}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums">
-                      {s.partiteGiocate}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums">
-                      {s.minutiGiocati}'
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                      {s.gol}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums">
-                      {s.assist}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-slate-500">
-                      {s.autogol}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
-                      {s.golPro}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-red-400">
-                      {s.golContro}
-                    </td>
-                    <td
-                      className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                        plusMinus > 0
-                          ? 'text-emerald-400'
-                          : plusMinus < 0
-                          ? 'text-red-400'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      {plusMinus > 0 ? `+${plusMinus}` : plusMinus}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
       ) : (
         <>
-          {/* Riepilogo squadra */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">Tiri</div>
-              <div className="text-xl font-bold tabular-nums">
-                {tiriNostri.totali}
-              </div>
-              <div className="text-xs text-slate-500 tabular-nums">
-                {tiriNostri.inPorta} in porta
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">xG</div>
-              <div className="text-xl font-bold tabular-nums text-emerald-400">
-                {formatXG(xgStagione)}
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">Gol</div>
-              <div className="text-xl font-bold tabular-nums">
-                {stats.reduce((t, s) => t + s.gol, 0)}
-              </div>
-            </div>
-          </div>
-
-          {/* Riepilogo subiti: lo stesso metro, dall'altra parte */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">Tiri subiti</div>
-              <div className="text-xl font-bold tabular-nums">
-                {tiriLoro.totali}
-              </div>
-              <div className="text-xs text-slate-500 tabular-nums">
-                {tiriLoro.inPorta} in porta
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">xGA</div>
-              <div className="text-xl font-bold tabular-nums text-red-400">
-                {formatXG(xgaStagione)}
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-lg p-3 text-center">
-              <div className="text-xs text-slate-400">Gol subiti</div>
-              <div className="text-xl font-bold tabular-nums">{golSubitiTotali}</div>
-            </div>
-          </div>
-
-          {golSenzaZona > 0 && (
-            <p className="text-xs text-amber-400/90 bg-amber-900/20 border border-amber-800/50 rounded-lg px-3 py-2 mb-4">
-              {golSenzaZona}{' '}
-              {golSenzaZona === 1
-                ? 'gol è stato registrato'
-                : 'gol sono stati registrati'}{' '}
-              senza zona di tiro: {golSenzaZona === 1 ? 'non conta' : 'non contano'}{' '}
-              nell'xG. Puoi aggiungere la zona da "Modifica partita".
-            </p>
-          )}
-
-          <div className="overflow-x-auto -mx-4 px-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700">
-                  <ThGiocatore ord={ord} />
-                  <Th col="tiri" ord={ord}>Tiri</Th>
-                  <Th col="tiriInPorta" ord={ord}>TP</Th>
-                  <Th col="gol" ord={ord}>Gol</Th>
-                  <Th col="conversione" ord={ord}>Conv.</Th>
-                  <Th col="xG" ord={ord}>xG</Th>
-                  <Th col="xGDiff" ord={ord}>G−xG</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {statsOrdinate.map((s) => {
-                  const diff = s.gol - s.xG
-                  const conv = conversione(s)
-                  return (
-                    <tr
-                      key={s.giocatore.id}
-                      className="border-b border-slate-800/50 hover:bg-slate-800/30"
-                    >
-                      <TdGiocatore s={s} />
-                      <td className="px-2 py-2 text-right tabular-nums">{s.tiri}</td>
-                      <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                        {s.tiriInPorta}
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                        {s.gol}
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                        {conv < 0 ? '—' : `${Math.round(conv * 100)}%`}
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
-                        {formatXG(s.xG)}
-                      </td>
-                      <td
-                        className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                          s.tiri === 0
-                            ? 'text-slate-600'
-                            : diff > 0.05
-                            ? 'text-emerald-400'
-                            : diff < -0.05
-                            ? 'text-red-400'
-                            : 'text-slate-400'
-                        }`}
-                      >
-                        {s.tiri === 0
-                          ? '—'
-                          : `${diff > 0 ? '+' : ''}${formatXG(diff)}`}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mappa tiri di stagione */}
-          <section className="mt-6">
-            <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-              {partitaCorrente ? 'Mappa tiri della partita' : 'Mappa tiri stagione'}
-            </h2>
-            <div className="grid grid-cols-2 gap-2 mb-2 max-w-sm">
-              <button
-                onClick={() => setFronteMappa('nostro')}
-                className={`py-2 rounded-lg text-sm font-semibold ${
-                  fronteMappa === 'nostro'
-                    ? 'bg-emerald-600'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                Nostri
-              </button>
-              <button
-                onClick={() => setFronteMappa('loro')}
-                className={`py-2 rounded-lg text-sm font-semibold ${
-                  fronteMappa === 'loro'
-                    ? 'bg-red-600'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                Subiti
-              </button>
-            </div>
-            <div className="max-w-sm">
-              <CampoTiri
-                modalita="mappa"
-                conteggi={fronteMappa === 'nostro' ? conteggiZone : conteggiZoneSubiti}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              In ogni zona: <strong className="text-slate-400">gol/tiri</strong>.
-              Più la zona è verde, più si è tirato da lì.{' '}
-              {fronteMappa === 'loro' &&
-                'Qui è la nostra porta: sono le conclusioni che abbiamo concesso.'}
-            </p>
-          </section>
-
-          {/* Pesi xG usati */}
-          <details className="mt-4">
-            <summary className="text-xs text-slate-400 cursor-pointer select-none">
-              Come viene calcolato l'xG
-            </summary>
-            <div className="mt-2 text-xs text-slate-500">
-              <p className="mb-2">
-                Ogni tiro vale un valore fisso in base alla zona da cui è partito.
-                Non è un modello allenato: è una tabella tarata su conversioni
-                tipiche del calcio a 5, utile per confrontare giocatori e partite
-                tra loro.
-              </p>
-              <p className="mb-2">
-                L'<strong>xGA</strong> è la stessa somma sulle conclusioni che
-                subiamo: quanto era probabile che gli avversari segnassero da dove
-                hanno tirato. Se i gol subiti sono più dell'xGA stiamo concedendo
-                meno di quanto paghiamo (o il portiere è in giornata storta); se
-                sono meno, il contrario.
-              </p>
-              <ul className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-                {ZONE_TIRO.map((z) => (
-                  <li key={z.value} className="flex justify-between">
-                    <span>{z.label}</span>
-                    <span className="tabular-nums text-slate-400">
-                      {z.peso.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </details>
-        </>
-      )}
-
-      {/* Legenda */}
-      <div className="mt-6 text-xs text-slate-500 space-y-1">
-        {vista === 'generali' ? (
-          <>
+          <TabellaGenerali
+            stats={statsOrdinate}
+            ord={ord}
+            dettaglio={linkDettaglio}
+          />
+          <div className="mt-6 text-xs text-slate-500 space-y-1">
             <p>
               <strong className="text-slate-400">Pres.</strong>: convocazioni •{' '}
               <strong className="text-slate-400">PG</strong>: partite giocate
@@ -877,30 +398,14 @@ export default function StatisticheStagione() {
             </p>
             <p>
               <strong className="text-slate-400">G+</strong>: gol della squadra
-              quando era in campo •{' '}
-              <strong className="text-slate-400">G-</strong>: gol subiti quando
-              era in campo • <strong className="text-slate-400">+/-</strong>:
-              differenza
+              quando era in campo • <strong className="text-slate-400">G-</strong>:
+              gol subiti quando era in campo •{' '}
+              <strong className="text-slate-400">+/-</strong>: differenza
             </p>
-          </>
-        ) : vista === 'inattive' ? null : (
-          <>
-            <p>
-              <strong className="text-slate-400">Tiri</strong>: conclusioni
-              totali (un gol è un tiro riuscito) •{' '}
-              <strong className="text-slate-400">TP</strong>: tiri in porta
-              (gol e tiri parati) •{' '}
-              <strong className="text-slate-400">Conv.</strong>: gol su tiri
-            </p>
-            <p>
-              <strong className="text-slate-400">xG</strong>: gol attesi in base
-              alla zona di tiro • <strong className="text-slate-400">G−xG</strong>
-              : quanto ha segnato in più (verde) o in meno (rosso) rispetto a
-              quello che le sue conclusioni valevano
-            </p>
-          </>
-        )}
-      </div>
+            <p>Tocca un nome per la sua scheda, con la mappa dei tiri.</p>
+          </div>
+        </>
+      )}
     </div>
   )
 }

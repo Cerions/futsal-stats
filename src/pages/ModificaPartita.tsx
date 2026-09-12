@@ -7,14 +7,18 @@ import { descriviEvento } from '../utils/evento'
 import { nomeCorto } from '../utils/giocatore'
 import { ordineRuolo } from '../db/ruoli'
 import TagSelector from '../components/TagSelector'
+import SelettoreCampo from '../components/SelettoreCampo'
 import Modal from '../components/Modal'
 import GestioneConvocati from '../components/GestioneConvocati'
+import ConfermaAzione from '../components/ConfermaAzione'
+import { useConferma } from '../utils/conferma'
 import {
   campiRiassegnati,
   eventiDaRiassegnare,
   type Riassegnazione,
 } from '../utils/riassegna'
 import type {
+  CampoPartita,
   EsitoTiro,
   Evento,
   Giocatore,
@@ -192,6 +196,8 @@ export default function ModificaPartita() {
     [partita?.stagioneId]
   )
 
+  const conferma = useConferma()
+
   // --- Convocati, richiudibili: di solito qui si viene per gli eventi ---
   const [mostraConvocati, setMostraConvocati] = useState(false)
 
@@ -274,18 +280,41 @@ export default function ModificaPartita() {
   async function aggiornaTag(tag: TagPartita | undefined) {
     await db.partite.update(partitaId, { tag })
   }
+  async function aggiornaCampo(campo: CampoPartita | undefined) {
+    await db.partite.update(partitaId, { campo })
+  }
 
   // ===== Elimina partita =====
   async function eliminaTutto() {
-    if (!confirm('Eliminare definitivamente questa partita e tutti i suoi eventi?'))
-      return
+    const ok = await conferma.chiedi({
+      titolo: 'Eliminare questa partita?',
+      messaggio:
+        eventi!.length === 0
+          ? 'Non ci sono eventi registrati: si cancella solo la partita.'
+          : `Vengono cancellati anche i ${eventi!.length} eventi registrati, e con loro il contributo di questa partita alle statistiche. Non si torna indietro.`,
+      azione: 'Elimina la partita',
+    })
+    if (!ok) return
     await cascadeEliminaPartita(partitaId)
     navigate(`/stagione/${partita!.stagioneId}`)
   }
 
   // ===== Elimina evento =====
   async function eliminaEvento(e: Evento) {
-    if (!confirm(`Eliminare l'evento "${descriviEvento(e, rosa!, schemi!)}"?`)) return
+    const ok = await conferma.chiedi({
+      titolo: 'Eliminare questo evento?',
+      messaggio: (
+        <>
+          <span className="text-slate-100">
+            T{e.tempoGioco} · {e.minuto}′ — {descriviEvento(e, rosa!, schemi!)}
+          </span>
+          <br />
+          Le statistiche si ricalcolano senza di lui.
+        </>
+      ),
+      azione: "Elimina l'evento",
+    })
+    if (!ok) return
     await db.eventi.delete(e.id!)
   }
 
@@ -690,6 +719,10 @@ export default function ModificaPartita() {
         <div>
           <label className="block text-sm text-slate-400 mb-2">Tipo partita</label>
           <TagSelector value={partita.tag} onChange={aggiornaTag} />
+        </div>
+        <div>
+          <label className="block text-sm text-slate-400 mb-2">Campo</label>
+          <SelettoreCampo value={partita.campo} onChange={aggiornaCampo} />
         </div>
       </section>
 
@@ -1365,6 +1398,8 @@ export default function ModificaPartita() {
           </div>
         </div>
       </Modal>
+
+      <ConfermaAzione {...conferma.props} />
     </div>
   )
 }

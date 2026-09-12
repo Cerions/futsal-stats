@@ -3,13 +3,18 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import Modal from '../components/Modal'
+import ConfermaAzione from '../components/ConfermaAzione'
+import { useConferma } from '../utils/conferma'
 import { formatDataOra } from '../utils/format'
 import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
 import { nomeSquadra } from '../utils/stagione'
 import TagBadge from '../components/TagBadge'
 import TagSelector from '../components/TagSelector'
 import StatoCloud from '../components/StatoCloud'
-import type { TagPartita } from '../db/schema'
+import SelettoreCampo from '../components/SelettoreCampo'
+import { campoIcona, campoLabel } from '../db/schema'
+import type { CampoPartita, Partita, TagPartita } from '../db/schema'
+import { risultatoPartita } from '../utils/statistiche'
 
 export default function Dashboard() {
   const { id } = useParams()
@@ -31,6 +36,15 @@ export default function Dashboard() {
     [stagioneId]
   )
 
+  // Gli eventi di tutte le partite: il risultato non è un campo salvato, si
+  // ricava contandoli, così resta giusto anche dopo una correzione a mano.
+  const eventi = useLiveQuery(async () => {
+    if (!partite) return []
+    const ids = partite.map((p) => p.id!).filter(Boolean)
+    if (ids.length === 0) return []
+    return db.eventi.where('partitaId').anyOf(ids).toArray()
+  }, [partite])
+
   // Stato modal nuova partita
   const [showNuovaPartita, setShowNuovaPartita] = useState(false)
   const [avversarioId, setAvversarioId] = useState<number | ''>('')
@@ -38,6 +52,9 @@ export default function Dashboard() {
     new Date().toISOString().slice(0, 16) // formato per input datetime-local
   )
   const [tagPartita, setTagPartita] = useState<TagPartita | undefined>(undefined)
+  const [campoPartita, setCampoPartita] = useState<CampoPartita | undefined>('casa')
+
+  const conferma = useConferma()
 
   async function creaPartita() {
     if (avversarioId === '') return
@@ -46,6 +63,7 @@ export default function Dashboard() {
       avversarioId: Number(avversarioId),
       dataOra: new Date(dataPartita).getTime(),
       tag: tagPartita,
+      campo: campoPartita,
       // Formato di partenza: si aggiusta nella preparazione, dove c'è
       // anche il resto delle impostazioni.
       config: {
@@ -68,17 +86,70 @@ export default function Dashboard() {
     // Reset form per la prossima
     setAvversarioId('')
     setTagPartita(undefined)
+    setCampoPartita('casa')
     navigate(`/partita/${id}`)
   }
 
-  async function eliminaPartitaConferma(partitaId: number) {
-    if (!confirm('Eliminare questa partita? Tutti gli eventi registrati verranno persi.')) return
-    await cascadeEliminaPartita(partitaId)
+  async function eliminaPartitaConferma(p: Partita) {
+    const suoi = (eventi ?? []).filter((e) => e.partitaId === p.id).length
+    const ok = await conferma.chiedi({
+      titolo: `Eliminare la partita con ${nomeAvversario(p.avversarioId)}?`,
+      messaggio:
+        suoi === 0
+          ? 'La partita non ha eventi registrati: si cancella solo lei.'
+          : `Vengono cancellati anche i ${suoi} eventi registrati, e con loro il contributo di questa partita alle statistiche.`,
+      azione: 'Elimina la partita',
+    })
+    if (!ok) return
+    await cascadeEliminaPartita(p.id!)
   }
 
   // Lookup veloce nome avversario per renderizzare le partite
   const nomeAvversario = (id: number) =>
     avversari?.find((a) => a.id === id)?.nome ?? '???'
+
+  /**
+   * Il nome dell'avversario, con davanti dove si è giocato. Niente icona
+   * quando il campo non è impostato: un segnaposto direbbe qualcosa che non
+   * sappiamo, e le partite vecchie sono tutte così finché non le sistemi.
+   */
+  function Titolo({ p }: { p: Partita }) {
+    return (
+      <div className="font-semibold flex items-center gap-2 flex-wrap">
+        {p.campo !== undefined && (
+          <span title={campoLabel(p.campo)} data-campo-riga={p.campo}>
+            {campoIcona(p.campo)}
+          </span>
+        )}
+        vs {nomeAvversario(p.avversarioId)}
+        <TagBadge tag={p.tag} />
+      </div>
+    )
+  }
+
+  /**
+   * Il punteggio, colorato secondo l'esito. Non è un campo salvato: si conta
+   * dagli eventi, così resta giusto anche dopo una correzione a mano.
+   */
+  function Punteggio({ p }: { p: Partita }) {
+    const { fatti, subiti } = risultatoPartita(
+      (eventi ?? []).filter((e) => e.partitaId === p.id)
+    )
+    const colore =
+      fatti > subiti
+        ? 'text-emerald-400'
+        : fatti < subiti
+        ? 'text-red-400'
+        : 'text-slate-300'
+    return (
+      <span
+        data-risultato={`${fatti}-${subiti}`}
+        className={`text-lg font-bold tabular-nums ml-3 shrink-0 ${colore}`}
+      >
+        {fatti}-{subiti}
+      </span>
+    )
+  }
 
   if (stagione === undefined) {
     return <div className="p-6">Caricamento...</div>
@@ -177,13 +248,11 @@ export default function Dashboard() {
                   onClick={() => navigate(`/partita/${p.id}`)}
                   className="text-left flex-1"
                 >
-                  <div className="font-semibold flex items-center gap-2 flex-wrap">
-                    vs {nomeAvversario(p.avversarioId)}
-                    <TagBadge tag={p.tag} />
-                  </div>
+                  <Titolo p={p} />
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
-                <span className="text-amber-400 text-sm">Riprendi →</span>
+                <Punteggio p={p} />
+                <span className="text-amber-400 text-sm ml-3">Riprendi →</span>
               </li>
             ))}
           </ul>
@@ -206,15 +275,12 @@ export default function Dashboard() {
                   onClick={() => navigate(`/partita/${p.id}`)}
                   className="text-left flex-1"
                 >
-                  <div className="font-semibold flex items-center gap-2 flex-wrap">
-                    vs {nomeAvversario(p.avversarioId)}
-                    <TagBadge tag={p.tag} />
-                  </div>
+                  <Titolo p={p} />
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
                 {!soloLettura && (
                   <button
-                    onClick={() => eliminaPartitaConferma(p.id!)}
+                    onClick={() => eliminaPartitaConferma(p)}
                     className="text-slate-500 hover:text-red-400 text-sm ml-3"
                   >
                     Elimina
@@ -240,17 +306,15 @@ export default function Dashboard() {
               >
                 <button
                   onClick={() => navigate(`/partita/${p.id}`)}
-                  className="text-left flex-1"
+                  className="text-left flex-1 min-w-0"
                 >
-                  <div className="font-semibold flex items-center gap-2 flex-wrap">
-                    vs {nomeAvversario(p.avversarioId)}
-                    <TagBadge tag={p.tag} />
-                  </div>
+                  <Titolo p={p} />
                   <div className="text-xs text-slate-400">{formatDataOra(p.dataOra)}</div>
                 </button>
+                <Punteggio p={p} />
                 {!soloLettura && (
                   <button
-                    onClick={() => eliminaPartitaConferma(p.id!)}
+                    onClick={() => eliminaPartitaConferma(p)}
                     className="text-slate-500 hover:text-red-400 text-sm ml-3"
                   >
                     Elimina
@@ -308,6 +372,11 @@ export default function Dashboard() {
             <TagSelector value={tagPartita} onChange={setTagPartita} />
           </div>
 
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">Campo</label>
+            <SelettoreCampo value={campoPartita} onChange={setCampoPartita} />
+          </div>
+
           <p className="text-xs text-slate-500">
             Numero di tempi, durata e tempo effettivo si scelgono nella
             preparazione, insieme a convocati e titolari.
@@ -330,6 +399,8 @@ export default function Dashboard() {
           </div>
         </div>
       </Modal>
+
+      <ConfermaAzione {...conferma.props} />
     </div>
   )
 }

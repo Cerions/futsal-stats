@@ -5,7 +5,8 @@ import type { Partita } from '../db/schema'
  *
  * Sono insiemi che si ridefiniscono da soli, non liste congelate: scelto
  * «Campionato», una partita di campionato giocata domani ci entra senza che
- * nessuno tocchi il filtro. Le partite senza tag stanno solo in «tutte».
+ * nessuno tocchi il filtro. Le partite senza tag — e quelle senza campo —
+ * stanno solo in «tutte».
  */
 
 export const PRESET = [
@@ -14,6 +15,8 @@ export const PRESET = [
   'campionato',
   'coppa',
   'amichevole',
+  'casa',
+  'trasferta',
 ] as const
 
 export type Preset = (typeof PRESET)[number]
@@ -24,6 +27,8 @@ export const ETICHETTE_PRESET: Record<Preset, string> = {
   campionato: 'Campionato',
   coppa: 'Coppa',
   amichevole: 'Amichevoli',
+  casa: '🏠 In casa',
+  trasferta: '✈️ Trasferta',
 }
 
 export function ePreset(v: string | null): v is Preset {
@@ -41,6 +46,10 @@ export function partiteDelPreset(finite: Partita[], preset: Preset): Partita[] {
       return finite.filter((p) => p.tag === 'Coppa')
     case 'amichevole':
       return finite.filter((p) => p.tag === 'Amichevole')
+    case 'casa':
+      return finite.filter((p) => p.campo === 'casa')
+    case 'trasferta':
+      return finite.filter((p) => p.campo === 'trasferta')
     case 'tutte':
       return finite
   }

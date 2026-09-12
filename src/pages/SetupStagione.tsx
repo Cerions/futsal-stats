@@ -15,6 +15,8 @@ import type {
 import { TIPI_INATTIVA } from '../db/zone'
 import { nomeCompleto } from '../utils/giocatore'
 import { eliminaSchema as cascadeEliminaSchema } from '../db/cascade'
+import ConfermaAzione from '../components/ConfermaAzione'
+import { useConferma } from '../utils/conferma'
 
 export default function SetupStagione() {
   const { id } = useParams()
@@ -34,6 +36,14 @@ export default function SetupStagione() {
     () => db.schemi.where('stagioneId').equals(stagioneId).toArray(),
     [stagioneId]
   )
+  // Solo per dire, prima di cancellare un avversario, quante partite lo
+  // riguardano: senza il numero la conferma non aggiungerebbe niente.
+  const partite = useLiveQuery(
+    () => db.partite.where('stagioneId').equals(stagioneId).toArray(),
+    [stagioneId]
+  )
+
+  const conferma = useConferma()
 
   // ----- MODAL GIOCATORE (unico per aggiunta + modifica) -----
   const [showGiocatore, setShowGiocatore] = useState(false)
@@ -86,7 +96,14 @@ export default function SetupStagione() {
   }
 
   async function eliminaGiocatore(giocatoreId: number) {
-    if (!confirm('Eliminare questo giocatore dalla rosa?')) return
+    const g = giocatori?.find((x) => x.id === giocatoreId)
+    const ok = await conferma.chiedi({
+      titolo: g ? `Eliminare ${nomeCompleto(g)}?` : 'Eliminare il giocatore?',
+      messaggio:
+        'Esce dalla rosa. Gli eventi delle partite già giocate restano dove sono, ma perdono il suo nome: nelle statistiche non comparirà più.',
+      azione: 'Elimina dalla rosa',
+    })
+    if (!ok) return
     await db.giocatori.delete(giocatoreId)
   }
 
@@ -120,7 +137,17 @@ export default function SetupStagione() {
   }
 
   async function eliminaAvversario(avvId: number) {
-    if (!confirm('Eliminare questa squadra avversaria?')) return
+    const a = avversari?.find((x) => x.id === avvId)
+    const partiteSue = (partite ?? []).filter((p) => p.avversarioId === avvId).length
+    const ok = await conferma.chiedi({
+      titolo: a ? `Eliminare «${a.nome}»?` : 'Eliminare la squadra?',
+      messaggio:
+        partiteSue === 0
+          ? 'Non ci sono partite contro questa squadra: esce solo dall\'elenco.'
+          : `Ci sono ${partiteSue} ${partiteSue === 1 ? 'partita' : 'partite'} contro di loro: restano, ma nell'elenco l'avversario diventa «???».`,
+      azione: 'Elimina la squadra',
+    })
+    if (!ok) return
     await db.avversari.delete(avvId)
   }
 
@@ -164,12 +191,14 @@ export default function SetupStagione() {
   }
 
   async function eliminaSchema(schemaId: number) {
-    if (
-      !confirm(
-        'Eliminare questo schema? Le battute e i tiri già registrati restano, ma perdono il riferimento allo schema.'
-      )
-    )
-      return
+    const sc = schemi?.find((x) => x.id === schemaId)
+    const ok = await conferma.chiedi({
+      titolo: sc ? `Eliminare lo schema «${sc.nome}»?` : 'Eliminare lo schema?',
+      messaggio:
+        'Le battute e i tiri già registrati restano, ma perdono il riferimento: nelle statistiche finiscono sotto «senza schema».',
+      azione: 'Elimina lo schema',
+    })
+    if (!ok) return
     await cascadeEliminaSchema(schemaId)
   }
 
@@ -580,6 +609,8 @@ export default function SetupStagione() {
           </div>
         </div>
       </Modal>
+
+      <ConfermaAzione {...conferma.props} />
     </div>
   )
 }

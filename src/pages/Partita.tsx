@@ -27,6 +27,7 @@ import { nomeCompleto, nomeCorto } from '../utils/giocatore'
 import { formatDataOra } from '../utils/format'
 import TagBadge from '../components/TagBadge'
 import TagSelector from '../components/TagSelector'
+import SelettoreCampo from '../components/SelettoreCampo'
 import { descriviEvento } from '../utils/evento'
 import CampoTiri from '../components/CampoTiri'
 import {
@@ -418,6 +419,14 @@ function PreMatch({
           <TagSelector
             value={partita.tag}
             onChange={(tag) => aggiorna({ tag })}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-2">Campo</label>
+          <SelettoreCampo
+            value={partita.campo}
+            onChange={(campo) => aggiorna({ campo })}
           />
         </div>
       </section>

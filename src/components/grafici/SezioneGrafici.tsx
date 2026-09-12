@@ -33,6 +33,12 @@ interface Props {
   stats: StatsGiocatore[]
   nomeAvversario: (id: number) => string
   nomeSquadra: string
+  /**
+   * Quali riquadri mostrare. I grafici stanno in due schede diverse — squadra
+   * e giocatori — ma il calcolo e il modo di disegnare sono gli stessi, e
+   * spezzare il file in due vorrebbe dire duplicarli.
+   */
+  ambito?: 'squadra' | 'giocatori' | 'tutto'
 }
 
 function Riquadro({
@@ -59,9 +65,12 @@ export default function SezioneGrafici({
   stats,
   nomeAvversario,
   nomeSquadra,
+  ambito = 'tutto',
 }: Props) {
   const [misuraFasce, setMisuraFasce] = useState<'gol' | 'conclusioni'>('gol')
   const [fronteOrigini, setFronteOrigini] = useState<'nostro' | 'loro'>('nostro')
+  const diSquadra = ambito !== 'giocatori'
+  const diGiocatori = ambito !== 'squadra'
 
   if (partite.length === 0) {
     return <NienteDati testo="Nessuna partita conclusa: i grafici arrivano dopo la prima." />
@@ -106,6 +115,7 @@ export default function SezioneGrafici({
   return (
     <>
       {/* ===== 1. Le quattro medie ===== */}
+      {diSquadra && (
       <Riquadro
         titolo={unaSola ? 'Il bilancio della partita' : 'Media a partita'}
         sottotitolo={
@@ -127,9 +137,10 @@ export default function SezioneGrafici({
           parando più del previsto.
         </p>
       </Riquadro>
+      )}
 
       {/* ===== 2. Il racconto ===== */}
-      {unaSola ? (
+      {diSquadra && (unaSola ? (
         <Riquadro
           titolo="Racconto della partita"
           sottotitolo="Occasioni accumulate minuto per minuto. I cerchi sono i gol: sopra la linea dell'avversario hai creato più di lui."
@@ -158,9 +169,10 @@ export default function SezioneGrafici({
             <PerPartita righe={perPartita} fronte="loro" />
           </Riquadro>
         </>
-      )}
+      ))}
 
       {/* ===== 3. Quando succedono le cose ===== */}
+      {diSquadra && (
       <Riquadro
         titolo="Quando succedono le cose"
         sottotitolo="Fasce di 5 minuti dentro ogni tempo. Sopra lo zero quello che facciamo noi, sotto quello che subiamo."
@@ -187,8 +199,10 @@ export default function SezioneGrafici({
         </div>
         <Fasce fasce={fasce} misura={misuraFasce} />
       </Riquadro>
+      )}
 
       {/* ===== 4. Da dove nascono ===== */}
+      {diSquadra && (
       <Riquadro
         titolo="Da dove nascono le conclusioni"
         sottotitolo="Lunghezza della barra: quante conclusioni. La parte piena sono i gol, alla punta l'xG prodotto."
@@ -242,8 +256,11 @@ export default function SezioneGrafici({
           </>
         )}
       </Riquadro>
+      )}
 
       {/* ===== 5. I giocatori ===== */}
+      {diGiocatori && (
+      <>
       <Riquadro
         titolo="Minuti giocati"
         sottotitolo="Chi ha retto il peso della partita."
@@ -289,6 +306,8 @@ export default function SezioneGrafici({
           }))}
         />
       </Riquadro>
+      </>
+      )}
 
       <p className="text-xs text-slate-500">
         Tocca o passa sopra una barra per il dettaglio. I numeri esatti stanno

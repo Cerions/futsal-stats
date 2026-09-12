@@ -72,6 +72,31 @@ export interface Cronometro {
 
 export type TagPartita = 'Amichevole' | 'Coppa' | 'Campionato'
 
+/**
+ * Dove si è giocato. È opzionale e resta vuoto finché non lo si imposta: le
+ * partite registrate prima che questo campo esistesse non hanno un valore, e
+ * metterle tutte in casa avrebbe inventato un dato sbagliato per metà di loro.
+ */
+export type CampoPartita = 'casa' | 'trasferta'
+
+export const CAMPI_PARTITA: {
+  value: CampoPartita
+  label: string
+  labelCorta: string
+  icona: string
+}[] = [
+  { value: 'casa', label: 'In casa', labelCorta: 'Casa', icona: '🏠' },
+  { value: 'trasferta', label: 'In trasferta', labelCorta: 'Trasferta', icona: '✈️' },
+]
+
+export function campoLabel(c: CampoPartita | undefined): string {
+  return CAMPI_PARTITA.find((x) => x.value === c)?.label ?? 'Non impostato'
+}
+
+export function campoIcona(c: CampoPartita | undefined): string {
+  return CAMPI_PARTITA.find((x) => x.value === c)?.icona ?? ''
+}
+
 export const TAG_PARTITA: { value: TagPartita; colore: string; coloreBg: string }[] = [
   { value: 'Amichevole', colore: 'text-blue-100', coloreBg: 'bg-blue-600' },
   { value: 'Coppa', colore: 'text-red-100', coloreBg: 'bg-red-600' },
@@ -109,16 +134,26 @@ export type EsitoTiro = 'parato' | 'fuori' | 'palo' | 'ribattuto'
 export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
 
 /**
- * Come nasce una conclusione: gioco costruito, ripartenza, rigore, oppure una
- * delle quattro palle inattive. Il contropiede sta accanto all'azione perché è
- * gioco in movimento, non una palla ferma: non ha schemi né punto di battuta.
+ * Come nasce una conclusione: gioco costruito, ripartenza, palla rubata alta,
+ * rigore, oppure una delle quattro palle inattive. Le prime tre stanno insieme
+ * perché sono gioco in movimento, non palla ferma: non hanno schemi né punto
+ * di battuta.
+ *
+ * 'recupero' è il gol nato da un pallone rubato con il pressing, prima che
+ * l'avversario esca dalla sua metà campo. Si sceglie al posto del contropiede,
+ * non insieme: quello che conta è da cosa è nata l'occasione.
  *
  * Il rigore si usa solo dal fronte avversario. Dei nostri il rigore è già la
  * zona di tiro 'RIGORE', e averlo in due posti vorrebbe dire registrarlo in due
  * modi diversi; delle conclusioni subite invece la zona spesso non basta —
  * volevamo poter dire «questo gol l'abbiamo preso su rigore».
  */
-export type OrigineTiro = 'azione' | 'contropiede' | 'rigore' | TipoInattiva
+export type OrigineTiro =
+  | 'azione'
+  | 'contropiede'
+  | 'recupero'
+  | 'rigore'
+  | TipoInattiva
 
 /**
  * Schema di palla inattiva, definito a mano nel setup della stagione
@@ -147,6 +182,8 @@ export interface Partita {
   avversarioId: number
   dataOra: number
   tag?: TagPartita
+  /** casa o trasferta; assente nelle partite registrate prima che esistesse */
+  campo?: CampoPartita
   config: ConfigPartita
   convocati: number[]
   titolari: number[]
