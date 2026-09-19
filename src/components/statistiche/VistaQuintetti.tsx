@@ -10,6 +10,8 @@ import {
   turniDiPartita,
 } from '../../utils/quintetti'
 import type { StatsQuintetto, TurnoQuintetto } from '../../utils/quintetti'
+import { confronta, useOrdinamento } from '../../utils/colonne'
+import { Th } from './tabella'
 import { NienteDati } from '../grafici/base'
 
 /**
@@ -19,6 +21,50 @@ import { NienteDati } from '../grafici/base'
  * insieme, e serve a capire quale formazione regge; «in ordine di partita»
  * lascia i tratti separati, e serve a rileggere come è andata dentro una gara.
  */
+
+/** Le colonne della tabella dei quintetti riuniti. */
+type Colonna =
+  | 'quintetto'
+  | 'turni'
+  | 'minuti'
+  | 'golFatti'
+  | 'golSubiti'
+  | 'differenza'
+  | 'tiri'
+  | 'tiriSubiti'
+
+const TESTUALI = ['quintetto'] as const
+
+/**
+ * Una riga della tabella: le statistiche più i nomi già composti. I nomi
+ * servono sia a disegnarla sia a ordinarla, e comporli una volta sola evita
+ * che le due cose possano divergere.
+ */
+interface Riga {
+  q: StatsQuintetto
+  nomi: string
+}
+
+function valore(r: Riga, c: Colonna): number | string {
+  switch (c) {
+    case 'quintetto':
+      return r.nomi.toLowerCase()
+    case 'turni':
+      return r.q.turni
+    case 'minuti':
+      return r.q.minuti
+    case 'golFatti':
+      return r.q.golFatti
+    case 'golSubiti':
+      return r.q.golSubiti
+    case 'differenza':
+      return r.q.golFatti - r.q.golSubiti
+    case 'tiri':
+      return r.q.tiri
+    case 'tiriSubiti':
+      return r.q.tiriSubiti
+  }
+}
 
 function differenza(a: number, b: number) {
   const d = a - b
@@ -31,11 +77,16 @@ function differenza(a: number, b: number) {
   )
 }
 
-/** I cinque nomi, in ordine di ruolo, su due righe se serve. */
-function Formazione({ ids, rosa }: { ids: number[]; rosa: Giocatore[] }) {
-  const giocatori = nomiQuintetto({ giocatori: ids, chiave: '' }, rosa).sort(
+/** I cinque, in ordine di ruolo: dal portiere in avanti. */
+function giocatoriDi(ids: number[], rosa: Giocatore[]): Giocatore[] {
+  return nomiQuintetto({ giocatori: ids, chiave: '' }, rosa).sort(
     (a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo)
   )
+}
+
+/** I cinque nomi, in ordine di ruolo, su due righe se serve. */
+function Formazione({ ids, rosa }: { ids: number[]; rosa: Giocatore[] }) {
+  const giocatori = giocatoriDi(ids, rosa)
   if (giocatori.length === 0) return <span className="text-slate-500">—</span>
   return (
     <span className="flex flex-wrap gap-x-1.5 gap-y-0.5">
@@ -60,8 +111,21 @@ export default function VistaQuintetti({
   nomeAvversario: (id: number) => string
 }) {
   const [modo, setModo] = useState<'riuniti' | 'partita'>('riuniti')
+  const ord = useOrdinamento<Colonna>('minuti', TESTUALI)
 
   const riuniti: StatsQuintetto[] = statistichePerQuintetto(partite, eventi)
+  const righe: Riga[] = riuniti.map((q) => ({
+    q,
+    nomi: giocatoriDi(q.giocatori, rosa)
+      .map((g) => nomeCorto(g))
+      .join(' '),
+  }))
+  // A parità, i minuti: fra due quintetti con lo stesso bilancio viene prima
+  // quello che ha retto più a lungo.
+  const ordinate = [...righe].sort((a, b) => {
+    const d = confronta(valore(a, ord.colonna), valore(b, ord.colonna), ord.discendente)
+    return d !== 0 ? d : b.q.minuti - a.q.minuti
+  })
   const perPartita = [...partite]
     .sort((a, b) => b.dataOra - a.dataOra)
     .map((p) => ({ partita: p, turni: turniDiPartita(p, eventi) }))
@@ -103,18 +167,23 @@ export default function VistaQuintetti({
           <div className="overflow-x-auto -mx-4 px-4">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-700 text-xs text-slate-400">
-                  <th className="px-2 py-2 text-left font-semibold">Quintetto</th>
-                  <th className="px-2 py-2 text-right font-semibold">Min</th>
-                  <th className="px-2 py-2 text-right font-semibold">GF</th>
-                  <th className="px-2 py-2 text-right font-semibold">GS</th>
-                  <th className="px-2 py-2 text-right font-semibold whitespace-nowrap">+/−</th>
-                  <th className="px-2 py-2 text-right font-semibold">TF</th>
-                  <th className="px-2 py-2 text-right font-semibold">TS</th>
+                <tr className="border-b border-slate-700">
+                  <Th col="quintetto" ord={ord} sinistra>Quintetto</Th>
+                  <Th col="turni" ord={ord} titolo="Quante volte quei cinque sono stati in campo insieme">
+                    Volte
+                  </Th>
+                  <Th col="minuti" ord={ord}>Min</Th>
+                  <Th col="golFatti" ord={ord}>GF</Th>
+                  <Th col="golSubiti" ord={ord}>GS</Th>
+                  <Th col="differenza" ord={ord}>
+                    <span className="whitespace-nowrap">+/−</span>
+                  </Th>
+                  <Th col="tiri" ord={ord}>TF</Th>
+                  <Th col="tiriSubiti" ord={ord}>TS</Th>
                 </tr>
               </thead>
               <tbody>
-                {riuniti.map((q) => (
+                {ordinate.map(({ q }) => (
                   <tr
                     key={q.chiave}
                     data-quintetto={q.chiave}
@@ -122,9 +191,9 @@ export default function VistaQuintetti({
                   >
                     <td className="px-2 py-2 min-w-44">
                       <Formazione ids={q.giocatori} rosa={rosa} />
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {q.turni} {q.turni === 1 ? 'volta' : 'volte'} in campo
-                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                      {q.turni}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums">{q.minuti}′</td>
                     <td className="px-2 py-2 text-right tabular-nums text-emerald-400 font-semibold">
@@ -189,6 +258,8 @@ export default function VistaQuintetti({
 
       <div className="mt-6 text-xs text-slate-500 space-y-1">
         <p>
+          <strong className="text-slate-400">Volte</strong>: quante volte quei
+          cinque sono stati in campo insieme •{' '}
           <strong className="text-slate-400">GF</strong> e{' '}
           <strong className="text-slate-400">GS</strong>: gol fatti e subiti
           mentre quei cinque erano in campo •{' '}
@@ -197,7 +268,9 @@ export default function VistaQuintetti({
           accanto quelli finiti in porta
         </p>
         <p>
-          I cambi segnati a meno di {FINESTRA_CAMBI_MINUTI + 1} minuti l'uno
+          Tocca un'intestazione per ordinare la tabella, e ritoccala per
+          rovesciare il verso. I cambi segnati a meno di{' '}
+          {FINESTRA_CAMBI_MINUTI + 1} minuti l'uno
           dall'altro contano come un'unica sostituzione: in campo sono entrati
           insieme, e conta solo la formazione rimasta dopo l'ultimo. I quintetti
           incompleti — quando mancano cambi o titolari — restano fuori dal

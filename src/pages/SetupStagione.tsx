@@ -1,22 +1,34 @@
-import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
-import { RUOLI, ruoloLabel, ordineRuolo } from '../db/ruoli'
 import { nomeSquadra } from '../utils/stagione'
-import Modal from '../components/Modal'
-import type {
-  Ruolo,
-  Giocatore,
-  SquadraAvversaria,
-  Schema,
-  TipoInattiva,
-} from '../db/schema'
-import { TIPI_INATTIVA } from '../db/zone'
-import { nomeCompleto } from '../utils/giocatore'
-import { eliminaSchema as cascadeEliminaSchema } from '../db/cascade'
-import ConfermaAzione from '../components/ConfermaAzione'
-import { useConferma } from '../utils/conferma'
+import SezioneRosa from '../components/setup/SezioneRosa'
+import SezioneAvversari from '../components/setup/SezioneAvversari'
+import SezioneSchemi from '../components/setup/SezioneSchemi'
+
+/**
+ * Il setup della stagione, una scheda per volta.
+ *
+ * Erano tre elenchi uno sotto l'altro nella stessa pagina: per aggiungere uno
+ * schema si scorreva oltre tutta la rosa. Sono cose che si toccano in momenti
+ * diversi — la rosa a inizio anno, gli avversari quando esce il calendario, gli
+ * schemi quando se ne prova uno nuovo — quindi ognuna ha la sua schermata.
+ *
+ * La scheda aperta sta nell'URL: si torna indietro dal telefono e si ritrova
+ * dov'eravamo, e un link porta dove volevi mandarlo.
+ */
+
+type Sezione = 'rosa' | 'avversari' | 'schemi'
+
+const SEZIONI: { valore: Sezione; label: string; icona: string }[] = [
+  { valore: 'rosa', label: 'Rosa', icona: '👕' },
+  { valore: 'avversari', label: 'Avversari', icona: '🆚' },
+  { valore: 'schemi', label: 'Schemi', icona: '📐' },
+]
+
+function eSezione(v: string | null): v is Sezione {
+  return v !== null && SEZIONI.some((s) => s.valore === v)
+}
 
 export default function SetupStagione() {
   const { id } = useParams()
@@ -36,171 +48,12 @@ export default function SetupStagione() {
     () => db.schemi.where('stagioneId').equals(stagioneId).toArray(),
     [stagioneId]
   )
-  // Solo per dire, prima di cancellare un avversario, quante partite lo
-  // riguardano: senza il numero la conferma non aggiungerebbe niente.
   const partite = useLiveQuery(
     () => db.partite.where('stagioneId').equals(stagioneId).toArray(),
     [stagioneId]
   )
 
-  const conferma = useConferma()
-
-  // ----- MODAL GIOCATORE (unico per aggiunta + modifica) -----
-  const [showGiocatore, setShowGiocatore] = useState(false)
-  const [giocatoreInModifica, setGiocatoreInModifica] = useState<Giocatore | null>(null)
-  const [formNome, setFormNome] = useState('')
-  const [formCognome, setFormCognome] = useState('')
-  const [formNumero, setFormNumero] = useState('')
-  const [formRuolo, setFormRuolo] = useState<Ruolo>('UNIVERSALE')
-
-  function apriNuovoGiocatore() {
-    setGiocatoreInModifica(null)
-    setFormNome('')
-    setFormCognome('')
-    setFormNumero('')
-    setFormRuolo('UNIVERSALE')
-    setShowGiocatore(true)
-  }
-
-  function apriModificaGiocatore(g: Giocatore) {
-    setGiocatoreInModifica(g)
-    setFormNome(g.nome)
-    setFormCognome(g.cognome)
-    setFormNumero(g.numero?.toString() ?? '')
-    setFormRuolo(g.ruolo)
-    setShowGiocatore(true)
-  }
-
-  async function salvaGiocatore() {
-    const nome = formNome.trim()
-    const cognome = formCognome.trim()
-    if (!nome || !cognome) return
-    const numero = formNumero ? Number(formNumero) : undefined
-    if (giocatoreInModifica) {
-      await db.giocatori.update(giocatoreInModifica.id!, {
-        nome,
-        cognome,
-        numero,
-        ruolo: formRuolo,
-      })
-    } else {
-      await db.giocatori.add({
-        stagioneId,
-        nome,
-        cognome,
-        numero,
-        ruolo: formRuolo,
-      })
-    }
-    setShowGiocatore(false)
-  }
-
-  async function eliminaGiocatore(giocatoreId: number) {
-    const g = giocatori?.find((x) => x.id === giocatoreId)
-    const ok = await conferma.chiedi({
-      titolo: g ? `Eliminare ${nomeCompleto(g)}?` : 'Eliminare il giocatore?',
-      messaggio:
-        'Esce dalla rosa. Gli eventi delle partite già giocate restano dove sono, ma perdono il suo nome: nelle statistiche non comparirà più.',
-      azione: 'Elimina dalla rosa',
-    })
-    if (!ok) return
-    await db.giocatori.delete(giocatoreId)
-  }
-
-  // ----- MODAL AVVERSARIO (unico per aggiunta + modifica) -----
-  const [showAvversario, setShowAvversario] = useState(false)
-  const [avversarioInModifica, setAvversarioInModifica] =
-    useState<SquadraAvversaria | null>(null)
-  const [formAvversario, setFormAvversario] = useState('')
-
-  function apriNuovoAvversario() {
-    setAvversarioInModifica(null)
-    setFormAvversario('')
-    setShowAvversario(true)
-  }
-
-  function apriModificaAvversario(a: SquadraAvversaria) {
-    setAvversarioInModifica(a)
-    setFormAvversario(a.nome)
-    setShowAvversario(true)
-  }
-
-  async function salvaAvversario() {
-    const nome = formAvversario.trim()
-    if (!nome) return
-    if (avversarioInModifica) {
-      await db.avversari.update(avversarioInModifica.id!, { nome })
-    } else {
-      await db.avversari.add({ stagioneId, nome })
-    }
-    setShowAvversario(false)
-  }
-
-  async function eliminaAvversario(avvId: number) {
-    const a = avversari?.find((x) => x.id === avvId)
-    const partiteSue = (partite ?? []).filter((p) => p.avversarioId === avvId).length
-    const ok = await conferma.chiedi({
-      titolo: a ? `Eliminare «${a.nome}»?` : 'Eliminare la squadra?',
-      messaggio:
-        partiteSue === 0
-          ? 'Non ci sono partite contro questa squadra: esce solo dall\'elenco.'
-          : `Ci sono ${partiteSue} ${partiteSue === 1 ? 'partita' : 'partite'} contro di loro: restano, ma nell'elenco l'avversario diventa «???».`,
-      azione: 'Elimina la squadra',
-    })
-    if (!ok) return
-    await db.avversari.delete(avvId)
-  }
-
-  // ----- MODAL SCHEMA PALLA INATTIVA -----
-  const [showSchema, setShowSchema] = useState(false)
-  const [schemaInModifica, setSchemaInModifica] = useState<Schema | null>(null)
-  const [formSchemaTipo, setFormSchemaTipo] = useState<TipoInattiva>('corner')
-  const [formSchemaNome, setFormSchemaNome] = useState('')
-  const [formSchemaNote, setFormSchemaNote] = useState('')
-
-  function apriNuovoSchema(tipo: TipoInattiva) {
-    setSchemaInModifica(null)
-    setFormSchemaTipo(tipo)
-    setFormSchemaNome('')
-    setFormSchemaNote('')
-    setShowSchema(true)
-  }
-
-  function apriModificaSchema(s: Schema) {
-    setSchemaInModifica(s)
-    setFormSchemaTipo(s.tipo)
-    setFormSchemaNome(s.nome)
-    setFormSchemaNote(s.note ?? '')
-    setShowSchema(true)
-  }
-
-  async function salvaSchema() {
-    const nome = formSchemaNome.trim()
-    if (!nome) return
-    const note = formSchemaNote.trim() || undefined
-    if (schemaInModifica) {
-      await db.schemi.update(schemaInModifica.id!, {
-        tipo: formSchemaTipo,
-        nome,
-        note,
-      })
-    } else {
-      await db.schemi.add({ stagioneId, tipo: formSchemaTipo, nome, note })
-    }
-    setShowSchema(false)
-  }
-
-  async function eliminaSchema(schemaId: number) {
-    const sc = schemi?.find((x) => x.id === schemaId)
-    const ok = await conferma.chiedi({
-      titolo: sc ? `Eliminare lo schema «${sc.nome}»?` : 'Eliminare lo schema?',
-      messaggio:
-        'Le battute e i tiri già registrati restano, ma perdono il riferimento: nelle statistiche finiscono sotto «senza schema».',
-      azione: 'Elimina lo schema',
-    })
-    if (!ok) return
-    await cascadeEliminaSchema(schemaId)
-  }
+  const [parametri, setParametri] = useSearchParams()
 
   if (stagione === undefined) {
     return <div className="p-6">Caricamento...</div>
@@ -216,401 +69,95 @@ export default function SetupStagione() {
     )
   }
 
+  const nellUrl = parametri.get('sez')
+  const sezione: Sezione = eSezione(nellUrl) ? nellUrl : 'rosa'
   const soloLettura = stagione.soloLettura === true
+
+  const quante: Record<Sezione, number> = {
+    rosa: giocatori?.length ?? 0,
+    avversari: avversari?.length ?? 0,
+    schemi: schemi?.length ?? 0,
+  }
+
+  function scegli(s: Sezione) {
+    const nuovi = new URLSearchParams(parametri)
+    if (s === 'rosa') nuovi.delete('sez')
+    else nuovi.set('sez', s)
+    setParametri(nuovi, { replace: true })
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
             ← Home
           </Link>
-          <h1 className="text-2xl font-bold mt-1">{nomeSquadra(stagione)}</h1>
+          <h1 className="text-2xl font-bold mt-1 truncate">
+            {nomeSquadra(stagione)}
+          </h1>
           <p className="text-sm text-slate-400">{stagione.nome} • Setup stagione</p>
         </div>
         <button
           onClick={() => navigate(`/stagione/${stagioneId}`)}
-          className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-semibold"
+          className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-semibold shrink-0"
         >
-          Vai alle partite →
+          Partite →
         </button>
       </div>
 
       {soloLettura && (
-        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-6">
+        <p className="bg-sky-900/30 border border-sky-800/60 text-sky-200 text-sm rounded-lg px-3 py-2 mb-4">
           👀 <strong>Sola lettura</strong>: rosa, avversari e schemi di questa
           stagione li gestisce chi te l'ha condivisa.
         </p>
       )}
 
-      {/* Sezione Rosa */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">
-            Rosa{' '}
-            <span className="text-slate-400 text-sm">
-              ({giocatori?.length ?? 0})
+      <div className="grid grid-cols-3 gap-1 bg-slate-800 p-1 rounded-lg mb-6">
+        {SEZIONI.map((s) => (
+          <button
+            key={s.valore}
+            data-sez-setup={s.valore}
+            onClick={() => scegli(s.valore)}
+            className={`px-1 py-2 rounded-md text-sm font-semibold ${
+              sezione === s.valore
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span className="mr-1">{s.icona}</span>
+            {s.label}
+            <span
+              className={`ml-1 font-normal ${
+                sezione === s.valore ? 'text-slate-400' : 'text-slate-500'
+              }`}
+            >
+              {quante[s.valore]}
             </span>
-          </h2>
-          {!soloLettura && (
-            <button
-              onClick={apriNuovoGiocatore}
-              className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
-            >
-              + Giocatore
-            </button>
-          )}
-        </div>
+          </button>
+        ))}
+      </div>
 
-        {giocatori && giocatori.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {[...giocatori]
-              .sort((a, b) => ordineRuolo(a.ruolo) - ordineRuolo(b.ruolo))
-              .map((g) => (
-                <li
-                  key={g.id}
-                  className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
-                >
-                  {g.numero !== undefined && (
-                    <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                      {g.numero}
-                    </span>
-                  )}
-                  <div className="flex-1">
-                    <div className="font-medium">{nomeCompleto(g)}</div>
-                    <div className="text-xs text-slate-400">{ruoloLabel(g.ruolo)}</div>
-                  </div>
-                  {!soloLettura && (
-                    <>
-                      <button
-                        onClick={() => apriModificaGiocatore(g)}
-                        className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                        title="Modifica"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        onClick={() => eliminaGiocatore(g.id!)}
-                        className="text-slate-400 hover:text-red-400 text-sm px-2"
-                        title="Elimina"
-                      >
-                        🗑️
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-          </ul>
-        ) : (
-          <p className="text-slate-500 text-sm italic">Nessun giocatore in rosa.</p>
-        )}
-      </section>
-
-      {/* Sezione Avversari */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">
-            Squadre avversarie{' '}
-            <span className="text-slate-400 text-sm">
-              ({avversari?.length ?? 0})
-            </span>
-          </h2>
-          {!soloLettura && (
-            <button
-              onClick={apriNuovoAvversario}
-              className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-sm"
-            >
-              + Avversario
-            </button>
-          )}
-        </div>
-
-        {avversari && avversari.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {avversari.map((a) => (
-              <li
-                key={a.id}
-                className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
-              >
-                <span className="flex-1">{a.nome}</span>
-                {!soloLettura && (
-                  <>
-                    <button
-                      onClick={() => apriModificaAvversario(a)}
-                      className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                      title="Modifica"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => eliminaAvversario(a.id!)}
-                      className="text-slate-400 hover:text-red-400 text-sm px-2"
-                      title="Elimina"
-                    >
-                      🗑️
-                    </button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-slate-500 text-sm italic">Nessuna squadra avversaria.</p>
-        )}
-      </section>
-
-      {/* Sezione Schemi palle inattive */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-1">
-          Schemi palle inattive{' '}
-          <span className="text-slate-400 text-sm">({schemi?.length ?? 0})</span>
-        </h2>
-        <p className="text-xs text-slate-500 mb-3">
-          Li scegli in partita quando batti, e a fine stagione vedi quali
-          rendono e quali girano a vuoto.
-        </p>
-
-        <div className="flex flex-col gap-4">
-          {TIPI_INATTIVA.map((t) => {
-            const delTipo = (schemi ?? []).filter((s) => s.tipo === t.value)
-            return (
-              <div key={t.value}>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-slate-300">
-                    <span className="mr-1">{t.icona}</span>
-                    {t.label}{' '}
-                    <span className="text-slate-500 font-normal">
-                      ({delTipo.length})
-                    </span>
-                  </h3>
-                  {!soloLettura && (
-                    <button
-                      onClick={() => apriNuovoSchema(t.value)}
-                      className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-xs"
-                    >
-                      + Schema
-                    </button>
-                  )}
-                </div>
-
-                {delTipo.length > 0 ? (
-                  <ul className="flex flex-col gap-2">
-                    {delTipo.map((s) => (
-                      <li
-                        key={s.id}
-                        className="bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-3"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium">{s.nome}</div>
-                          {s.note && (
-                            <div className="text-xs text-slate-400 truncate">
-                              {s.note}
-                            </div>
-                          )}
-                        </div>
-                        {!soloLettura && (
-                          <>
-                            <button
-                              onClick={() => apriModificaSchema(s)}
-                              className="text-slate-400 hover:text-slate-100 text-sm px-2"
-                              title="Modifica"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => eliminaSchema(s.id!)}
-                              className="text-slate-400 hover:text-red-400 text-sm px-2"
-                              title="Elimina"
-                            >
-                              🗑️
-                            </button>
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-slate-500 text-xs italic">
-                    Nessuno schema. Puoi comunque registrare le battute senza.
-                  </p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* Modal giocatore (nuovo o modifica) */}
-      <Modal
-        open={showGiocatore}
-        onClose={() => setShowGiocatore(false)}
-        title={giocatoreInModifica ? 'Modifica giocatore' : 'Nuovo giocatore'}
-      >
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Nome</label>
-            <input
-              type="text"
-              value={formNome}
-              onChange={(e) => setFormNome(e.target.value)}
-              autoFocus
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              Cognome
-            </label>
-            <input
-              type="text"
-              value={formCognome}
-              onChange={(e) => setFormCognome(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              Numero (opzionale)
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="99"
-              value={formNumero}
-              onChange={(e) => setFormNumero(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Ruolo</label>
-            <select
-              value={formRuolo}
-              onChange={(e) => setFormRuolo(e.target.value as Ruolo)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            >
-              {RUOLI.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              onClick={() => setShowGiocatore(false)}
-              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-            >
-              Annulla
-            </button>
-            <button
-              onClick={salvaGiocatore}
-              disabled={!formNome.trim() || !formCognome.trim()}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {giocatoreInModifica ? 'Salva' : 'Aggiungi'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal avversario (nuovo o modifica) */}
-      <Modal
-        open={showAvversario}
-        onClose={() => setShowAvversario(false)}
-        title={
-          avversarioInModifica ? 'Modifica avversario' : 'Nuova squadra avversaria'
-        }
-      >
-        <input
-          type="text"
-          value={formAvversario}
-          onChange={(e) => setFormAvversario(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && salvaAvversario()}
-          placeholder="Es. Real Madrid Futsal"
-          autoFocus
-          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:border-emerald-500"
+      {sezione === 'rosa' ? (
+        <SezioneRosa
+          stagioneId={stagioneId}
+          soloLettura={soloLettura}
+          giocatori={giocatori}
         />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setShowAvversario(false)}
-            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-          >
-            Annulla
-          </button>
-          <button
-            onClick={salvaAvversario}
-            disabled={!formAvversario.trim()}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {avversarioInModifica ? 'Salva' : 'Aggiungi'}
-          </button>
-        </div>
-      </Modal>
-
-      {/* Modal schema corner (nuovo o modifica) */}
-      <Modal
-        open={showSchema}
-        onClose={() => setShowSchema(false)}
-        title={schemaInModifica ? 'Modifica schema' : 'Nuovo schema'}
-      >
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Situazione</label>
-            <select
-              value={formSchemaTipo}
-              onChange={(e) => setFormSchemaTipo(e.target.value as TipoInattiva)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            >
-              {TIPI_INATTIVA.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.icona} {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Nome</label>
-            <input
-              type="text"
-              value={formSchemaNome}
-              onChange={(e) => setFormSchemaNome(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && salvaSchema()}
-              placeholder="Es. Corto sul primo palo"
-              autoFocus
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              Note (opzionale)
-            </label>
-            <textarea
-              value={formSchemaNote}
-              onChange={(e) => setFormSchemaNote(e.target.value)}
-              rows={3}
-              placeholder="Come si sviluppa, chi si muove dove..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 resize-none"
-            />
-          </div>
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              onClick={() => setShowSchema(false)}
-              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-            >
-              Annulla
-            </button>
-            <button
-              onClick={salvaSchema}
-              disabled={!formSchemaNome.trim()}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {schemaInModifica ? 'Salva' : 'Aggiungi'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <ConfermaAzione {...conferma.props} />
+      ) : sezione === 'avversari' ? (
+        <SezioneAvversari
+          stagioneId={stagioneId}
+          soloLettura={soloLettura}
+          avversari={avversari}
+          partite={partite}
+        />
+      ) : (
+        <SezioneSchemi
+          stagioneId={stagioneId}
+          soloLettura={soloLettura}
+          schemi={schemi}
+        />
+      )}
     </div>
   )
 }

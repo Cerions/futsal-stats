@@ -7,6 +7,8 @@ import {
   percentualeParate,
 } from '../../utils/portieri'
 import type { StatsPortiere } from '../../utils/portieri'
+import { confronta, useOrdinamento } from '../../utils/colonne'
+import { Th } from './tabella'
 import { BarreOrizzontali, BarreDivergenti } from '../grafici/BarreOrizzontali'
 import { COLORI } from '../grafici/tavolozza'
 import { NienteDati, TitoloGrafico } from '../grafici/base'
@@ -20,6 +22,51 @@ import { NienteDati, TitoloGrafico } from '../grafici/base'
  * fuori, e soprattutto il divario fra l'xGA affrontato e i gol presi — l'unico
  * numero che prova a separare il portiere da quello che gli succede intorno.
  */
+
+/**
+ * Le colonne della tabella. Stanno qui e non in `utils/colonne.ts` perché
+ * servono solo a questa vista: non essendo esportate, la regola del fast
+ * refresh non ha niente da ridire.
+ */
+type Colonna =
+  | 'portiere'
+  | 'partiteGiocate'
+  | 'minutiGiocati'
+  | 'golSubiti'
+  | 'golOgni'
+  | 'parate'
+  | 'percParate'
+  | 'xga'
+  | 'evitati'
+  | 'pulite'
+
+const TESTUALI = ['portiere'] as const
+
+function valore(p: StatsPortiere, c: Colonna): number | string {
+  switch (c) {
+    case 'portiere':
+      return `${p.giocatore.cognome} ${p.giocatore.nome}`.toLowerCase()
+    case 'partiteGiocate':
+      return p.partiteGiocate
+    case 'minutiGiocati':
+      return p.minutiGiocati
+    case 'golSubiti':
+      return p.golSubiti
+    case 'golOgni':
+      // Il fallback non arriva mai in tabella: chi non ha giocato è già fuori.
+      return golOgniPartita(p) ?? 0
+    case 'parate':
+      return p.parate
+    case 'percParate':
+      return percentualeParate(p) ?? -1
+    case 'xga':
+      return p.xga
+    case 'evitati':
+      return golEvitati(p)
+    case 'pulite':
+      return p.partiteSenzaGol
+  }
+}
 
 function Sezione({
   titolo,
@@ -39,6 +86,8 @@ function Sezione({
 }
 
 export default function VistaPortieri({ portieri }: { portieri: StatsPortiere[] }) {
+  const ord = useOrdinamento<Colonna>('minutiGiocati', TESTUALI)
+
   if (portieri.length === 0) {
     return (
       <NienteDati testo="Nessun portiere in rosa: assegna il ruolo dal setup della stagione." />
@@ -51,33 +100,45 @@ export default function VistaPortieri({ portieri }: { portieri: StatsPortiere[] 
 
   const perc = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`)
 
+  // A parità di valore il cognome, così l'ordine non balla fra un click e
+  // l'altro su due portieri con gli stessi numeri.
+  const ordinati = [...giocanti].sort((a, b) => {
+    const d = confronta(
+      valore(a, ord.colonna),
+      valore(b, ord.colonna),
+      ord.discendente
+    )
+    return d !== 0 ? d : a.giocatore.cognome.localeCompare(b.giocatore.cognome)
+  })
+
   return (
     <>
       <div className="overflow-x-auto -mx-4 px-4 mb-6">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700 text-xs text-slate-400">
-              <th className="px-2 py-2 text-left font-semibold sticky left-0 bg-slate-900">
+            <tr className="border-b border-slate-700">
+              <Th col="portiere" ord={ord} sinistra sticky>
                 Portiere
-              </th>
-              <th className="px-2 py-2 text-right font-semibold">PG</th>
-              <th className="px-2 py-2 text-right font-semibold">Min</th>
-              <th className="px-2 py-2 text-right font-semibold">GS</th>
-              <th
-                className="px-2 py-2 text-right font-semibold"
-                title={`Gol subiti rapportati a ${MINUTI_PARTITA} minuti`}
+              </Th>
+              <Th col="partiteGiocate" ord={ord}>PG</Th>
+              <Th col="minutiGiocati" ord={ord}>Min</Th>
+              <Th col="golSubiti" ord={ord}>GS</Th>
+              <Th
+                col="golOgni"
+                ord={ord}
+                titolo={`Gol subiti rapportati a ${MINUTI_PARTITA} minuti`}
               >
                 GS/{MINUTI_PARTITA}′
-              </th>
-              <th className="px-2 py-2 text-right font-semibold">Parate</th>
-              <th className="px-2 py-2 text-right font-semibold">%P</th>
-              <th className="px-2 py-2 text-right font-semibold">xGA</th>
-              <th className="px-2 py-2 text-right font-semibold">Evitati</th>
-              <th className="px-2 py-2 text-right font-semibold">Pulite</th>
+              </Th>
+              <Th col="parate" ord={ord}>Parate</Th>
+              <Th col="percParate" ord={ord}>%P</Th>
+              <Th col="xga" ord={ord}>xGA</Th>
+              <Th col="evitati" ord={ord}>Evitati</Th>
+              <Th col="pulite" ord={ord}>Pulite</Th>
             </tr>
           </thead>
           <tbody>
-            {giocanti.map((p) => {
+            {ordinati.map((p) => {
               const ogni = golOgniPartita(p)
               const evitati = golEvitati(p)
               return (
@@ -173,6 +234,10 @@ export default function VistaPortieri({ portieri }: { portieri: StatsPortiere[] 
           porta affrontate — gli autogol restano fuori, non sono parate mancate •{' '}
           <strong className="text-slate-400">Pulite</strong>: partite giocate senza
           prendere gol
+        </p>
+        <p>
+          Tocca un'intestazione per ordinare la tabella, e ritoccala per
+          rovesciare il verso.
         </p>
         <p>
           <strong className="text-slate-400">Evitati</strong>: xGA meno gol subiti.

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { StatsGiocatore } from './statistiche'
 
 /**
@@ -5,6 +6,10 @@ import type { StatsGiocatore } from './statistiche'
  * di ciascuna. Stanno qui e non accanto ai componenti perché sono dati puri:
  * la regola del fast refresh non vuole costanti e funzioni esportate dallo
  * stesso file di un componente.
+ *
+ * L'ordinamento è generico sul nome delle colonne: ogni tabella dichiara le
+ * sue — i giocatori qui sotto, i portieri e i quintetti accanto alle rispettive
+ * viste — e riusa lo stesso stato e gli stessi header cliccabili.
  */
 
 export type ColonnaOrdinabile =
@@ -25,10 +30,55 @@ export type ColonnaOrdinabile =
   | 'conversione'
 
 /** Stato dell'ordinamento, passato agli header cliccabili. */
-export interface Ordinamento {
-  colonna: ColonnaOrdinabile
+export interface Ordinamento<C extends string = ColonnaOrdinabile> {
+  colonna: C
   discendente: boolean
-  cambia: (c: ColonnaOrdinabile) => void
+  cambia: (c: C) => void
+}
+
+/**
+ * Lo stato dell'ordinamento di una tabella.
+ *
+ * `testuali` elenca le colonne che si leggono come parole: quelle partono dalla
+ * A, i numeri dal più grande — è quello che ci si aspetta toccando «Gol».
+ * Ritoccare la colonna già attiva rovescia il verso.
+ */
+export function useOrdinamento<C extends string>(
+  iniziale: C,
+  testuali: readonly C[] = []
+): Ordinamento<C> {
+  const [colonna, setColonna] = useState<C>(iniziale)
+  const [discendente, setDiscendente] = useState(!testuali.includes(iniziale))
+
+  return {
+    colonna,
+    discendente,
+    cambia: (c: C) => {
+      if (c === colonna) {
+        setDiscendente(!discendente)
+        return
+      }
+      setColonna(c)
+      setDiscendente(!testuali.includes(c))
+    },
+  }
+}
+
+/**
+ * Confronto fra due valori di colonna, verso già applicato. I numeri si
+ * confrontano da numeri, il resto come testo.
+ */
+export function confronta(
+  a: number | string,
+  b: number | string,
+  discendente: boolean
+): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return discendente ? b - a : a - b
+  }
+  return discendente
+    ? String(b).localeCompare(String(a))
+    : String(a).localeCompare(String(b))
 }
 
 /** Percentuale realizzativa: gol su tiri. -1 se non ha mai tirato. */

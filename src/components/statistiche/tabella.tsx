@@ -6,21 +6,39 @@ import type { ColonnaOrdinabile, Ordinamento } from '../../utils/colonne'
 
 /** Pezzi comuni alle tabelle delle statistiche: header ordinabili e prima colonna. */
 
-/** Header di colonna numerica, cliccabile per ordinare. */
-export function Th({
+/**
+ * Header cliccabile per ordinare. Generico sul nome della colonna: le tabelle
+ * dei giocatori, dei portieri e dei quintetti hanno colonne diverse ma lo
+ * stesso comportamento.
+ *
+ * `sinistra` per le colonne di testo, a destra tutti i numeri; `sticky` solo
+ * dove anche le celle restano agganciate durante lo scroll orizzontale, se no
+ * l'intestazione scorrerebbe per conto suo.
+ */
+export function Th<C extends string>({
   children,
   col,
   ord,
+  sinistra,
+  sticky,
+  titolo,
 }: {
   children: React.ReactNode
-  col: ColonnaOrdinabile
-  ord: Ordinamento
+  col: C
+  ord: Ordinamento<C>
+  sinistra?: boolean
+  sticky?: boolean
+  titolo?: string
 }) {
   const attivo = col === ord.colonna
   return (
     <th
       onClick={() => ord.cambia(col)}
-      className={`px-2 py-2 text-right text-xs font-semibold cursor-pointer select-none ${
+      title={titolo}
+      data-col={col}
+      className={`px-2 py-2 text-xs font-semibold cursor-pointer select-none ${
+        sinistra ? 'text-left' : 'text-right'
+      } ${sticky ? 'sticky left-0 bg-slate-900' : ''} ${
         attivo ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
       }`}
     >
@@ -30,19 +48,12 @@ export function Th({
   )
 }
 
-/** Prima colonna: resta agganciata a sinistra durante lo scroll orizzontale. */
-export function ThGiocatore({ ord }: { ord: Ordinamento }) {
-  const attivo = ord.colonna === 'giocatore'
+/** Prima colonna delle tabelle dei singoli. */
+export function ThGiocatore({ ord }: { ord: Ordinamento<ColonnaOrdinabile> }) {
   return (
-    <th
-      onClick={() => ord.cambia('giocatore')}
-      className={`px-2 py-2 text-left text-xs font-semibold cursor-pointer select-none sticky left-0 bg-slate-900 ${
-        attivo ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-      }`}
-    >
+    <Th col="giocatore" ord={ord} sinistra sticky>
       Giocatore
-      {attivo && <span className="ml-1">{ord.discendente ? '↓' : '↑'}</span>}
-    </th>
+    </Th>
   )
 }
 
