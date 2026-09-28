@@ -2,7 +2,7 @@ import type { Evento } from '../db/schema'
 import { ordineDiGioco } from './evento'
 
 /**
- * Sostituzioni ricostruite a posteriori.
+ * Sostituzioni ricostruite o corrette a posteriori.
  *
  * Capita di accorgersi solo dopo che un giocatore era entrato: se non era fra i
  * convocati, le sue giocate finiscono registrate su chi ha sostituito. Aggiunta
@@ -11,6 +11,10 @@ import { ordineDiGioco } from './evento'
  *
  * Il periodo va dalla sostituzione alla fine della partita, o al momento in cui
  * l'uscito rientra: da lì in poi le giocate tornano a essere sue davvero.
+ *
+ * Lo stesso vale per un cambio già registrato che si sposta nel tempo: lì la
+ * finestra da rivedere è quella fra il vecchio minuto e il nuovo —
+ * `eventiDaSpostare` più sotto.
  */
 
 /** Un singolo spostamento proposto: quale evento, e in che veste. */
@@ -18,6 +22,95 @@ export interface Riassegnazione {
   evento: Evento
   /** In quale ruolo il giocatore uscito compare in questo evento. */
   ruolo: 'protagonista' | 'assist' | 'esce' | 'entra'
+}
+
+/** Un punto della partita: tempo e minuto, che insieme dicono «quando». */
+export interface Istante {
+  tempoGioco: number
+  minuto: number
+}
+
+/** In che veste un giocatore compare in un evento, se ci compare. */
+function ruoloIn(e: Evento, id: number): Riassegnazione['ruolo'] | null {
+  switch (e.tipo) {
+    case 'gol_fatto':
+      if (e.giocatoreId === id) return 'protagonista'
+      if (e.assistId === id) return 'assist'
+      return null
+    case 'tiro':
+    case 'autogol_contro':
+      return e.giocatoreId === id ? 'protagonista' : null
+    case 'cambio':
+      // Solo chi esce: se in mezzo ci fosse un altro ingresso dello stesso
+      // giocatore, girarlo all'altro produrrebbe un cambio senza senso.
+      return e.giocatoreEsceId === id ? 'esce' : null
+    default:
+      return null
+  }
+}
+
+/** true se `t` sta nella finestra fra `a` e `b`, estremi compresi. */
+function dentroLaFinestra(t: Istante, a: Istante, b: Istante): boolean {
+  const dopoA = t.tempoGioco > a.tempoGioco ||
+    (t.tempoGioco === a.tempoGioco && t.minuto >= a.minuto)
+  const primaDiB = t.tempoGioco < b.tempoGioco ||
+    (t.tempoGioco === b.tempoGioco && t.minuto <= b.minuto)
+  return dopoA && primaDiB
+}
+
+/** Il risultato di uno spostamento: cosa proporre, e da chi verso chi. */
+export interface SpostamentoCambio {
+  proposte: Riassegnazione[]
+  /** Il giocatore a cui quelle giocate risultano intestate adesso. */
+  daId: number
+  /** Quello a cui andrebbero girate. */
+  versoId: number
+  /** true se il cambio è stato spostato più avanti nella partita. */
+  inAvanti: boolean
+}
+
+/**
+ * Le conseguenze di un cambio spostato nel tempo.
+ *
+ * Spostare una sostituzione non cambia solo un numero: cambia chi era in campo
+ * nella finestra fra il vecchio minuto e il nuovo, e lì dentro le giocate
+ * restano intestate a chi, dopo lo spostamento, non c'era.
+ *
+ * - **spostato in avanti**: fra il vecchio minuto e il nuovo il subentrato non
+ *   era ancora entrato, quindi quello che risulta suo è di chi è uscito;
+ * - **spostato indietro**: in quella finestra chi è uscito era già fuori,
+ *   quindi quello che risulta suo è del subentrato.
+ *
+ * Gli estremi sono compresi: allo stesso minuto del cambio non si può sapere
+ * cosa sia venuto prima, e una proposta di troppo si toglie con una spunta.
+ */
+export function eventiDaSpostare(
+  eventi: Evento[],
+  cambio: { id: number; esceId: number; entraId: number },
+  da: Istante,
+  a: Istante
+): SpostamentoCambio {
+  const inAvanti =
+    a.tempoGioco > da.tempoGioco ||
+    (a.tempoGioco === da.tempoGioco && a.minuto > da.minuto)
+  const fermo = a.tempoGioco === da.tempoGioco && a.minuto === da.minuto
+
+  const daId = inAvanti ? cambio.entraId : cambio.esceId
+  const versoId = inAvanti ? cambio.esceId : cambio.entraId
+  const niente = { proposte: [], daId, versoId, inAvanti }
+  if (fermo || cambio.esceId === cambio.entraId) return niente
+
+  const inizio = inAvanti ? da : a
+  const fine = inAvanti ? a : da
+
+  const proposte: Riassegnazione[] = []
+  for (const e of [...eventi].sort(ordineDiGioco)) {
+    if (e.id === cambio.id) continue
+    if (!dentroLaFinestra(e, inizio, fine)) continue
+    const ruolo = ruoloIn(e, daId)
+    if (ruolo !== null) proposte.push({ evento: e, ruolo })
+  }
+  return { proposte, daId, versoId, inAvanti }
 }
 
 /** true se `a` è successo prima di `b`, a parità di minuto false. */

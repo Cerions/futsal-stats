@@ -190,8 +190,10 @@ export default function DettaglioGiocatore() {
                   <CampoTiri modalita="mappa" conteggi={conteggiZone} />
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  In ogni zona: <strong className="text-slate-400">gol/tiri</strong>{' '}
-                  suoi. Più la zona è verde, più ha tirato da lì.
+                  In ogni zona i suoi tiri, e sotto quanti hanno preso la porta
+                  (<strong className="text-slate-400">P</strong>) e quanti sono
+                  entrati (<strong className="text-slate-400">G</strong>). Più la
+                  zona è verde, più ha tirato da lì.
                   {s.golSenzaZona > 0 && (
                     <>
                       {' '}

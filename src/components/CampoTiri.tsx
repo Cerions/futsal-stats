@@ -74,6 +74,8 @@ const REGIONI: RegioneCampo[] = [
 
 export interface ConteggioZona {
   tiri: number
+  /** Quelle che la porta l'hanno presa: gol e parate. */
+  inPorta: number
   gol: number
 }
 
@@ -117,7 +119,19 @@ export default function CampoTiri({
     if (seleziona) return zonaLabelCorta(z)
     const c = conteggi?.get(z)
     if (!c || c.tiri === 0) return '—'
-    return `${c.gol}/${c.tiri}`
+    return String(c.tiri)
+  }
+
+  /**
+   * La seconda riga della zona: quante di quelle conclusioni hanno preso la
+   * porta e quante sono entrate. Sta sotto al totale invece che accanto perché
+   * tre numeri in fila, su una zona stretta, si leggono come una data.
+   */
+  function dettaglioZona(z: ZonaTiro): string | null {
+    if (seleziona) return null
+    const c = conteggi?.get(z)
+    if (!c || c.tiri === 0) return null
+    return `${c.inPorta}P ${c.gol}G`
   }
 
   const daFermo = mostraDaFermo ? ZONE_TIRO.filter((z) => z.daFermo) : []
@@ -170,21 +184,36 @@ export default function CampoTiri({
         <circle cx="100" cy="100" r="2.5" fill="rgb(100,116,139)" pointerEvents="none" />
 
         {/* Etichette */}
-        {REGIONI.map((r) => (
-          <text
-            key={`t-${r.zona}`}
-            x={r.label.x}
-            y={r.label.y}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize={seleziona ? 7.5 : 10}
-            fontWeight="600"
-            fill="rgb(203,213,225)"
-            pointerEvents="none"
-          >
-            {testoZona(r.zona)}
-          </text>
-        ))}
+        {REGIONI.map((r) => {
+          const dettaglio = dettaglioZona(r.zona)
+          return (
+            <g key={`t-${r.zona}`} pointerEvents="none">
+              <text
+                x={r.label.x}
+                y={dettaglio === null ? r.label.y : r.label.y - 4}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={seleziona ? 7.5 : 11}
+                fontWeight="600"
+                fill="rgb(203,213,225)"
+              >
+                {testoZona(r.zona)}
+              </text>
+              {dettaglio !== null && (
+                <text
+                  x={r.label.x}
+                  y={r.label.y + 6}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="6.5"
+                  fill="rgb(148,163,184)"
+                >
+                  {dettaglio}
+                </text>
+              )}
+            </g>
+          )
+        })}
       </svg>
 
       {/* Situazioni da fermo: fuori dal disegno, sono più comode come bottoni */}
@@ -215,12 +244,17 @@ export default function CampoTiri({
           return (
             <div
               key={z.value}
+              data-zona={z.value}
               className="py-2 rounded-lg text-center text-sm bg-slate-900 border border-slate-700"
             >
               <span className="text-slate-400">{z.labelCorta}</span>{' '}
-              <span className="font-semibold tabular-nums">
-                {c ? `${c.gol}/${c.tiri}` : '—'}
-              </span>
+              <span className="font-semibold tabular-nums">{c ? c.tiri : '—'}</span>
+              {c && c.tiri > 0 && (
+                <span className="text-slate-500 tabular-nums text-xs">
+                  {' '}
+                  · {c.inPorta}P {c.gol}G
+                </span>
+              )}
             </div>
           )
         })}

@@ -184,8 +184,10 @@ export default function VistaSquadra({
           />
         </div>
         <p className="text-xs text-slate-500 mt-2">
-          In ogni zona: <strong className="text-slate-400">gol/tiri</strong>. Più
-          la zona è verde, più si è tirato da lì.{' '}
+          In ogni zona i tiri partiti da lì, e sotto quanti hanno preso la porta
+          (<strong className="text-slate-400">P</strong>) e quanti sono entrati
+          (<strong className="text-slate-400">G</strong>). Più la zona è verde,
+          più si è tirato da lì.{' '}
           {fronteMappa === 'loro' &&
             'Qui è la nostra porta: sono le conclusioni che abbiamo concesso.'}
         </p>

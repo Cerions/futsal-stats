@@ -293,9 +293,10 @@ export function risultatoPartita(eventiPartita: Evento[]): {
 }
 
 /**
- * Conta tiri e gol per ogni zona, per disegnare la mappa dei tiri.
- * Considera sia i tiri espliciti sia i gol a cui è stata associata una zona.
- * Con fronte 'loro' disegna la mappa di quello che ci hanno tirato addosso.
+ * Conta tiri, conclusioni in porta e gol per ogni zona, per disegnare la mappa
+ * dei tiri. Considera sia i tiri espliciti sia i gol a cui è stata associata
+ * una zona. Con fronte 'loro' disegna la mappa di quello che ci hanno tirato
+ * addosso.
  */
 export function conteggiPerZona(
   eventi: Evento[],
@@ -305,7 +306,7 @@ export function conteggiPerZona(
   const get = (z: ZonaTiro) => {
     let c = mappa.get(z)
     if (!c) {
-      c = { tiri: 0, gol: 0 }
+      c = { tiri: 0, inPorta: 0, gol: 0 }
       mappa.set(z, c)
     }
     return c
@@ -316,7 +317,16 @@ export function conteggiPerZona(
     if (z === null) continue
     const c = get(z)
     c.tiri += 1
-    if (eGolConZona(e, fronte)) c.gol += 1
+    // Un gol la porta l'ha presa per definizione; per gli altri lo dice l'esito.
+    if (eGolConZona(e, fronte)) {
+      c.gol += 1
+      c.inPorta += 1
+    } else if (
+      (e.tipo === 'tiro' || e.tipo === 'tiro_subito') &&
+      esitoInPorta(e.esito)
+    ) {
+      c.inPorta += 1
+    }
   }
   return mappa
 }
@@ -371,9 +381,10 @@ export interface StatsOrigine {
   tiri: number
   gol: number
   /**
-   * Autogol avversari nati da questa situazione. Contati a parte: sono gol,
-   * ma non sono tiri nostri e non hanno xG. Sommarli ai gol farebbe salire la
-   * conversione sopra il 100% su uno schema con un tiro e due gol.
+   * Autogol avversari nati da questa situazione. Restano un campo a parte
+   * perché non sono tiri nostri e non hanno xG: le tabelle li sommano ai gol —
+   * per la situazione sono una riuscita uguale — ma non alla conversione, che
+   * su un corner con un tiro e due gol darebbe il 200%.
    */
   autogol: number
   xG: number
@@ -400,8 +411,9 @@ export function statistichePerOrigine(
 
   for (const e of eventi) {
     // L'autogol provocato appartiene alla situazione da cui è nato, ma non è
-    // una nostra conclusione: entra solo nella colonna sua. Dal lato loro non
-    // esiste: dei nostri autogol non registriamo com'erano nati.
+    // una nostra conclusione: va nel campo suo, che le tabelle sommano ai gol
+    // senza toccare tiri e xG. Dal lato loro non esiste: dei nostri autogol non
+    // registriamo com'erano nati.
     if (e.tipo === 'autogol_pro' && fronte === 'nostro') {
       const s = mappa.get(origineDi(e))
       if (s) s.autogol += 1
@@ -425,7 +437,11 @@ export interface StatsSchema {
   battute: number
   tiri: number
   gol: number
-  /** Autogol avversari provocati da questo schema: gol, ma non tiri nostri. */
+  /**
+   * Autogol avversari provocati da questo schema. Le tabelle li sommano ai
+   * gol: per lo schema sono una riuscita. Restano un campo loro perché un tiro
+   * nostro dietro non c'è, quindi in xG e conversione non entrano.
+   */
   autogol: number
   xG: number
 }

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link, Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { eliminaPartita as cascadeEliminaPartita } from '../db/cascade'
-import { descriviEvento } from '../utils/evento'
+import { descriviEvento, ordineDiGioco } from '../utils/evento'
 import { nomeCorto } from '../utils/giocatore'
 import { ordineRuolo } from '../db/ruoli'
 import TagSelector from '../components/TagSelector'
@@ -15,6 +15,7 @@ import { useConferma } from '../utils/conferma'
 import {
   campiRiassegnati,
   eventiDaRiassegnare,
+  eventiDaSpostare,
   type Riassegnazione,
 } from '../utils/riassegna'
 import type {
@@ -177,15 +178,18 @@ export default function ModificaPartita() {
         : [],
     [partita?.stagioneId]
   )
-  // Dal più recente al più vecchio: qui si viene per correggere l'ultima cosa
-  // registrata, non per rileggere la partita dall'inizio.
+  // Dall'ultima cosa successa alla prima: qui si viene per correggere quello
+  // che è appena capitato, non per rileggere la partita dall'inizio. L'ordine è
+  // quello di gioco, non quello di inserimento: da quando il minuto si corregge,
+  // un evento spostato deve andare a posto nell'elenco invece che restare dove
+  // l'avevi scritto.
   const eventi = useLiveQuery(
     () =>
       db.eventi
         .where('partitaId')
         .equals(partitaId)
-        .sortBy('id')
-        .then((e) => e.reverse()),
+        .toArray()
+        .then((e) => e.sort(ordineDiGioco).reverse()),
     [partitaId]
   )
   const schemi = useLiveQuery(
@@ -217,16 +221,22 @@ export default function ModificaPartita() {
   const [esceNuovo, setEsceNuovo] = useState<number | ''>('')
   const [entraNuovo, setEntraNuovo] = useState<number | ''>('')
 
-  // --- Modal: riassegnazione dopo una sostituzione aggiunta a mano ---
+  // --- Modal: riassegnazione, dopo una sostituzione aggiunta o spostata ---
   const [proposte, setProposte] = useState<Riassegnazione[] | null>(null)
   const [scelte, setScelte] = useState<Set<number>>(new Set())
   const [riassegnaVerso, setRiassegnaVerso] = useState<{
-    esceId: number
-    entraId: number
+    /** Chi risulta aver fatto quelle giocate. */
+    daId: number
+    /** Chi le ha fatte davvero. */
+    versoId: number
+    /** La frase che spiega perché le stiamo proponendo. */
+    spiegazione: string
   } | null>(null)
 
   // --- Modal: modifica evento esistente ---
   const [eventoInModifica, setEventoInModifica] = useState<Evento | null>(null)
+  const [editTempo, setEditTempo] = useState('1')
+  const [editMinuto, setEditMinuto] = useState('0')
   const [editMarcatore, setEditMarcatore] = useState<number | ''>('')
   const [editAssist, setEditAssist] = useState<number | ''>('')
   const [editZona, setEditZona] = useState<ZonaTiro | ''>('')
@@ -449,7 +459,13 @@ export default function ModificaPartita() {
         if (daSpostare.length > 0) {
           setProposte(daSpostare)
           setScelte(new Set(daSpostare.map((r) => r.evento.id!)))
-          setRiassegnaVerso({ esceId, entraId })
+          setRiassegnaVerso({
+            daId: esceId,
+            versoId: entraId,
+            spiegazione: `Da quel minuto in poi queste giocate risultano di ${nomeDi(
+              esceId
+            )}, che però era uscito.`,
+          })
         }
         break
       }
@@ -463,7 +479,7 @@ export default function ModificaPartita() {
     await db.transaction('rw', db.eventi, async () => {
       for (const r of proposte) {
         if (!scelte.has(r.evento.id!)) continue
-        await db.eventi.update(r.evento.id!, campiRiassegnati(r, riassegnaVerso.entraId))
+        await db.eventi.update(r.evento.id!, campiRiassegnati(r, riassegnaVerso.versoId))
       }
     })
     chiudiRiassegnazione()
@@ -479,6 +495,8 @@ export default function ModificaPartita() {
   function apriModificaEvento(e: Evento) {
     if (!eventoModificabile(e)) return
     setEventoInModifica(e)
+    setEditTempo(String(e.tempoGioco))
+    setEditMinuto(String(e.minuto))
     setEditAssist('')
     setEditZona('')
     setEditEsito('parato')
@@ -545,6 +563,14 @@ export default function ModificaPartita() {
   async function salvaModificaEvento() {
     if (!eventoInModifica) return
     if (editMarcatore === '') return
+    if (!quandoEditValido) return
+
+    // Quando è successo. Si corregge come tutto il resto: un evento registrato
+    // di corsa finisce spesso col minuto di quando l'hai battuto sul telefono.
+    const quando = {
+      tempoGioco: Number(editTempo),
+      minuto: Number(editMinuto),
+    }
 
     // Campi di origine, coerenti con l'origine scelta:
     // battuta e schema si azzerano se l'origine non li prevede.
@@ -564,6 +590,7 @@ export default function ModificaPartita() {
 
     if (eventoInModifica.tipo === 'gol_fatto') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         ...datiOrigineEdit,
         giocatoreId: Number(editMarcatore),
         assistId: editAssist === '' ? undefined : Number(editAssist),
@@ -571,15 +598,18 @@ export default function ModificaPartita() {
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'autogol_contro') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         giocatoreId: Number(editMarcatore),
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'autogol_pro') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         ...datiOrigineEdit,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro') {
       if (editZona === '') return
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         ...datiOrigineEdit,
         giocatoreId: Number(editMarcatore),
         zona: editZona,
@@ -587,29 +617,74 @@ export default function ModificaPartita() {
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'gol_subito') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         zona: zonaEditEffettiva === '' ? undefined : zonaEditEffettiva,
         origine: editOrigine,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro_subito') {
       if (zonaEditEffettiva === '') return
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         zona: zonaEditEffettiva,
         esito: editEsito,
         origine: editOrigine,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'cambio') {
       if (editEsce === '' || editEntra === '' || editEsce === editEntra) return
+      const esceId = Number(editEsce)
+      const entraId = Number(editEntra)
+      const prima = {
+        tempoGioco: eventoInModifica.tempoGioco,
+        minuto: eventoInModifica.minuto,
+      }
       await db.eventi.update(eventoInModifica.id!, {
-        giocatoreEsceId: Number(editEsce),
-        giocatoreEntraId: Number(editEntra),
+        ...quando,
+        giocatoreEsceId: esceId,
+        giocatoreEntraId: entraId,
       } as Partial<Evento>)
+      proponiSpostamento(eventoInModifica.id!, esceId, entraId, prima, quando)
     } else if (eventoInModifica.tipo === 'inattiva') {
       await db.eventi.update(eventoInModifica.id!, {
+        ...quando,
         situazione: editSituazione,
         schemaId: editSchema === '' ? undefined : Number(editSchema),
       } as Partial<Evento>)
     }
     setEventoInModifica(null)
+  }
+
+  /**
+   * Spostare un cambio sposta anche il confine fra chi era in campo e chi no.
+   * Le giocate finite dalla parte sbagliata di quel confine si propongono una
+   * per una: sono l'unica conseguenza che il ricalcolo non sistema da sé.
+   */
+  function proponiSpostamento(
+    cambioId: number,
+    esceId: number,
+    entraId: number,
+    prima: { tempoGioco: number; minuto: number },
+    dopo: { tempoGioco: number; minuto: number }
+  ) {
+    const esito = eventiDaSpostare(
+      eventi!,
+      { id: cambioId, esceId, entraId },
+      prima,
+      dopo
+    )
+    if (esito.proposte.length === 0) return
+    setProposte(esito.proposte)
+    setScelte(new Set(esito.proposte.map((r) => r.evento.id!)))
+    setRiassegnaVerso({
+      daId: esito.daId,
+      versoId: esito.versoId,
+      spiegazione: esito.inAvanti
+        ? `Il cambio ora è al ${dopo.minuto}′ del ${dopo.tempoGioco}° tempo: fino a lì ${nomeDi(
+            entraId
+          )} non era ancora entrato, ma queste giocate risultano sue.`
+        : `Il cambio ora è al ${dopo.minuto}′ del ${dopo.tempoGioco}° tempo: da lì ${nomeDi(
+            esceId
+          )} era già uscito, ma queste giocate risultano sue.`,
+    })
   }
 
   // Etichetta tipo evento per il dropdown
@@ -649,6 +724,20 @@ export default function ModificaPartita() {
   const editHaSoloOrigine =
     tipoInModifica === 'gol_subito' || tipoInModifica === 'tiro_subito'
   const editHaCambio = tipoInModifica === 'cambio'
+
+  /**
+   * Il quando, come lo si è digitato. Il tempo deve esistere davvero nella
+   * partita: un evento nel 3° tempo di una partita da due non lo vedrebbe più
+   * nessuno, perché nelle statistiche quel tempo non c'è.
+   */
+  const quandoEditValido =
+    Number.isInteger(Number(editTempo)) &&
+    Number(editTempo) >= 1 &&
+    Number(editTempo) <= partita.config.numeroTempi &&
+    editTempo.trim() !== '' &&
+    Number.isInteger(Number(editMinuto)) &&
+    Number(editMinuto) >= 0 &&
+    editMinuto.trim() !== ''
 
   const richiedeGiocatore =
     tipoNuovo === 'gol_fatto' ||
@@ -1095,15 +1184,14 @@ export default function ModificaPartita() {
         title="Sposto queste giocate?"
       >
         {proposte !== null && riassegnaVerso !== null && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3" data-riassegna>
             <p className="text-sm text-slate-300">
-              Da quel minuto in poi risultano fatte da{' '}
-              <strong>{nomeDi(riassegnaVerso.esceId)}</strong>, che però era
-              uscito. Le sposto su{' '}
+              {riassegnaVerso.spiegazione} Le sposto su{' '}
               <strong className="text-emerald-400">
-                {nomeDi(riassegnaVerso.entraId)}
+                {nomeDi(riassegnaVerso.versoId)}
               </strong>
-              ? Togli la spunta a quelle che erano davvero sue.
+              ? Togli la spunta a quelle che erano davvero di{' '}
+              <strong>{nomeDi(riassegnaVerso.daId)}</strong>.
             </p>
             <ul className="flex flex-col gap-1 text-sm max-h-72 overflow-y-auto">
               {proposte.map((r) => (
@@ -1178,6 +1266,40 @@ export default function ModificaPartita() {
         }
       >
         <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Tempo</label>
+              <input
+                type="number"
+                min="1"
+                max={partita.config.numeroTempi}
+                value={editTempo}
+                onChange={(e) => setEditTempo(e.target.value)}
+                data-edit-tempo
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Minuto</label>
+              <input
+                type="number"
+                min="0"
+                max={partita.config.durataTempoMinuti}
+                value={editMinuto}
+                onChange={(e) => setEditMinuto(e.target.value)}
+                data-edit-minuto
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          {editHaCambio && (
+            <p className="text-xs text-slate-500 -mt-1">
+              Spostando il cambio cambia anche chi era in campo nel mezzo: se in
+              quei minuti ci sono giocate intestate al giocatore sbagliato, te le
+              mostro prima di toccarle.
+            </p>
+          )}
+
           {editHaGiocatore && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Giocatore</label>
@@ -1385,7 +1507,9 @@ export default function ModificaPartita() {
             </button>
             <button
               onClick={salvaModificaEvento}
+              data-salva-modifica
               disabled={
+                !quandoEditValido ||
                 (editHaGiocatore && editMarcatore === '') ||
                 (editHaEsito && zonaEditEffettiva === '') ||
                 (editHaCambio &&
