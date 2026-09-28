@@ -36,6 +36,23 @@ create index if not exists stagioni_cloud_proprietario_idx
 alter table public.stagioni_cloud enable row level security;
 
 -- ---------------------------------------------------------------------------
+-- Accesso dalla Data API
+--
+-- Dal 30/10/2026 Supabase non concede più in automatico i permessi sulle
+-- nuove tabelle in public: senza questi grant la tabella esiste ma supabase-js
+-- riceve "permission denied". I grant aprono solo l'accesso di base, chi vede
+-- cosa lo decidono comunque le policy RLS qui sotto. Niente grant ad anon:
+-- l'app legge e scrive solo da utente loggato.
+-- ---------------------------------------------------------------------------
+grant select, insert, update, delete
+  on public.stagioni_cloud
+  to authenticated;
+
+grant select, insert, update, delete
+  on public.stagioni_cloud
+  to service_role;
+
+-- ---------------------------------------------------------------------------
 -- Il proprietario può fare tutto sulle proprie stagioni
 -- ---------------------------------------------------------------------------
 drop policy if exists "proprietario legge" on public.stagioni_cloud;
