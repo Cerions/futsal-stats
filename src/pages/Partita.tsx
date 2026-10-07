@@ -55,6 +55,7 @@ import {
   zonaLabel,
 } from '../db/zone'
 import GestioneConvocati from '../components/GestioneConvocati'
+import NumeroMaglia from '../components/NumeroMaglia'
 
 /** Passi del flusso di registrazione di una conclusione. */
 type PassoTiro = 'giocatore' | 'origine' | 'battuta' | 'schema' | 'zona' | 'esito' | 'assist'
@@ -475,11 +476,7 @@ function PreMatch({
                     onChange={() => toggleConvocato(g.id!)}
                     className="w-5 h-5"
                   />
-                  {g.numero !== undefined && (
-                    <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                      {g.numero}
-                    </span>
-                  )}
+                  <NumeroMaglia giocatore={g} rosa={rosa} modificabile />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium">{nomeCompleto(g)}</div>
                     <div className="text-xs text-slate-400">
@@ -523,7 +520,7 @@ function PreMatch({
                     className="bg-slate-800 rounded-lg px-4 py-2.5 flex items-center gap-3"
                   >
                     {g.numero !== undefined && (
-                      <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                      <span className="bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
                         {g.numero}
                       </span>
                     )}

@@ -190,20 +190,32 @@ export function turniDiPartita(partita: Partita, eventi: Evento[]): TurnoQuintet
  * Gli stessi quintetti sommati su tutte le partite dell'ambito, dal più usato.
  * Solo quintetti da cinque: se i cambi sono incompleti o mancano titolari, la
  * formazione ricostruita non è una formazione e non va confrontata con le altre.
+ *
+ * `escludi` toglie dei giocatori dalla formazione **dopo** averla ricostruita:
+ * serve a guardare i quattro di movimento senza il portiere, e due turni che
+ * differivano solo per chi stava in porta diventano lo stesso gruppo. Il turno
+ * deve comunque essere stato di cinque: quello che si toglie è dalla sigla, non
+ * dal campo. Un turno senza portieri in campo — il portiere di movimento —
+ * resta di cinque anche dopo, e sta nel gruppo suo.
  */
 export function statistichePerQuintetto(
   partite: Partita[],
-  eventi: Evento[]
+  eventi: Evento[],
+  escludi: ReadonlySet<number> = new Set()
 ): StatsQuintetto[] {
   const mappa = new Map<string, StatsQuintetto>()
   for (const p of partite) {
     for (const t of turniDiPartita(p, eventi)) {
       if (t.giocatori.length !== 5) continue
-      let s = mappa.get(t.chiave)
+      const giocatori =
+        escludi.size === 0 ? t.giocatori : t.giocatori.filter((id) => !escludi.has(id))
+      if (giocatori.length === 0) continue
+      const chiave = chiaveDi(giocatori)
+      let s = mappa.get(chiave)
       if (!s) {
         s = {
-          giocatori: t.giocatori,
-          chiave: t.chiave,
+          giocatori,
+          chiave,
           turni: 0,
           minuti: 0,
           golFatti: 0,
@@ -213,7 +225,7 @@ export function statistichePerQuintetto(
           tiriSubiti: 0,
           tiriSubitiInPorta: 0,
         }
-        mappa.set(t.chiave, s)
+        mappa.set(chiave, s)
       }
       s.turni += 1
       s.minuti += t.minuti

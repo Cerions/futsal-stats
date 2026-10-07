@@ -111,9 +111,24 @@ export default function VistaQuintetti({
   nomeAvversario: (id: number) => string
 }) {
   const [modo, setModo] = useState<'riuniti' | 'partita'>('riuniti')
+  const [senzaPortiere, setSenzaPortiere] = useState(false)
   const ord = useOrdinamento<Colonna>('minuti', TESTUALI)
 
-  const riuniti: StatsQuintetto[] = statistichePerQuintetto(partite, eventi)
+  // Chi sta in porta cambia spesso senza che cambi la squadra davanti: lasciando
+  // fuori i portieri, due turni che differivano solo per quello diventano lo
+  // stesso gruppo, e si legge il rendimento dei quattro di movimento.
+  const portieri = new Set(
+    rosa.filter((g) => g.ruolo === 'PORTIERE').map((g) => g.id!)
+  )
+  const escludi = senzaPortiere ? portieri : new Set<number>()
+  const nascondi = (ids: number[]) =>
+    senzaPortiere ? ids.filter((id) => !portieri.has(id)) : ids
+
+  const riuniti: StatsQuintetto[] = statistichePerQuintetto(
+    partite,
+    eventi,
+    escludi
+  )
   const righe: Riga[] = riuniti.map((q) => ({
     q,
     nomi: giocatoriDi(q.giocatori, rosa)
@@ -139,7 +154,7 @@ export default function VistaQuintetti({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-2 gap-2 mb-2">
         {(
           [
             ['riuniti', 'Riuniti'],
@@ -159,6 +174,20 @@ export default function VistaQuintetti({
           </button>
         ))}
       </div>
+
+      <label className="flex items-center gap-2 mb-4 text-sm text-slate-300 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={senzaPortiere}
+          onChange={() => setSenzaPortiere((p) => !p)}
+          data-senza-portiere
+          className="w-4 h-4"
+        />
+        Senza il portiere
+        <span className="text-xs text-slate-500">
+          — i quattro di movimento, con i cambi fra i pali messi insieme
+        </span>
+      </label>
 
       {modo === 'riuniti' ? (
         riuniti.length === 0 ? (
@@ -247,7 +276,7 @@ export default function VistaQuintetti({
                         {t.golFatti}–{t.golSubiti} · tiri {t.tiri}–{t.tiriSubiti}
                       </span>
                     </div>
-                    <Formazione ids={t.giocatori} rosa={rosa} />
+                    <Formazione ids={nascondi(t.giocatori)} rosa={rosa} />
                   </li>
                 ))}
               </ul>
@@ -258,15 +287,22 @@ export default function VistaQuintetti({
 
       <div className="mt-6 text-xs text-slate-500 space-y-1">
         <p>
-          <strong className="text-slate-400">Volte</strong>: quante volte quei
-          cinque sono stati in campo insieme •{' '}
+          <strong className="text-slate-400">Volte</strong>: quante volte quel
+          gruppo è stato in campo insieme •{' '}
           <strong className="text-slate-400">GF</strong> e{' '}
           <strong className="text-slate-400">GS</strong>: gol fatti e subiti
-          mentre quei cinque erano in campo •{' '}
+          mentre c'era •{' '}
           <strong className="text-slate-400">TF</strong> e{' '}
           <strong className="text-slate-400">TS</strong>: tiri fatti e subiti, con
           accanto quelli finiti in porta
         </p>
+        {senzaPortiere && (
+          <p className="text-slate-400">
+            Senza il portiere: i numeri sono sempre quelli dei cinque in campo —
+            i gol li prende la squadra, non i quattro davanti — ma i turni in cui
+            cambiava solo chi stava fra i pali sono messi insieme.
+          </p>
+        )}
         <p>
           Tocca un'intestazione per ordinare la tabella, e ritoccala per
           rovesciare il verso. I cambi segnati a meno di{' '}
