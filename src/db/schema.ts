@@ -135,7 +135,8 @@ export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
 
 /**
  * Come nasce una conclusione: gioco costruito, ripartenza, palla rubata alta,
- * rigore, oppure una delle quattro palle inattive. Le prime tre stanno insieme
+ * una delle quattro palle inattive, oppure le due situazioni da fermo che si
+ * battono da un punto fisso — rigore e tiro libero. Le prime tre stanno insieme
  * perché sono gioco in movimento, non palla ferma: non hanno schemi né punto
  * di battuta.
  *
@@ -143,16 +144,16 @@ export type TipoInattiva = 'corner' | 'rimessa' | 'piazzato' | 'inizio'
  * l'avversario esca dalla sua metà campo. Si sceglie al posto del contropiede,
  * non insieme: quello che conta è da cosa è nata l'occasione.
  *
- * Il rigore si usa solo dal fronte avversario. Dei nostri il rigore è già la
- * zona di tiro 'RIGORE', e averlo in due posti vorrebbe dire registrarlo in due
- * modi diversi; delle conclusioni subite invece la zona spesso non basta —
- * volevamo poter dire «questo gol l'abbiamo preso su rigore».
+ * 'rigore' e 'tiro_libero' non hanno né schema né assist: la palla è ferma su
+ * un punto deciso dal regolamento e tira uno solo. La zona la decidono loro —
+ * il dischetto dei 6 e quello dei 10 — quindi non si sceglie a parte.
  */
 export type OrigineTiro =
   | 'azione'
   | 'contropiede'
   | 'recupero'
   | 'rigore'
+  | 'tiro_libero'
   | TipoInattiva
 
 /**

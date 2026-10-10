@@ -171,6 +171,37 @@ export const TIPI_INATTIVA: DefinizioneInattiva[] = [
 
 const MAPPA_INATTIVE = new Map(TIPI_INATTIVA.map((t) => [t.value, t]))
 
+/**
+ * Le due situazioni che si battono da un punto fisso: il dischetto dei 6 e
+ * quello dei 10. Non hanno schema — c'è un modo solo di batterle — e nemmeno
+ * assist: tocca la palla uno solo. La zona la decidono loro, quindi chi le
+ * sceglie non se la vede nemmeno chiedere.
+ */
+const ORIGINI_DA_FERMO: DefinizioneOrigine[] = [
+  {
+    value: 'rigore',
+    label: 'Rigore',
+    labelCorta: 'Rigore',
+    icona: '⚫',
+    richiedeBattuta: false,
+    richiedeSchema: false,
+  },
+  {
+    value: 'tiro_libero',
+    label: 'Tiro libero (10 m)',
+    labelCorta: 'Tiro libero',
+    icona: '🎯',
+    richiedeBattuta: false,
+    richiedeSchema: false,
+  },
+]
+
+/** La zona da cui si batte ognuna delle due, quando l'origine la decide. */
+const ZONA_DA_FERMO: Partial<Record<OrigineTiro, ZonaTiro>> = {
+  rigore: 'RIGORE',
+  tiro_libero: 'TIRO_LIBERO',
+}
+
 export function inattivaLabel(t: TipoInattiva): string {
   return MAPPA_INATTIVE.get(t)?.label ?? t
 }
@@ -184,9 +215,11 @@ export function inattivaIcona(t: TipoInattiva): string {
 }
 
 /**
- * Le origini: gioco aperto, contropiede, recupero alto, più le quattro palle
- * inattive. Solo le inattive hanno schemi; le prime tre no, sono gioco in
- * movimento e non c'è niente di preparato da scegliere.
+ * Le origini: gioco aperto, contropiede, recupero alto, le quattro palle
+ * inattive, e le due situazioni che si battono da un punto fisso. Gli schemi
+ * li hanno solo le inattive; le prime tre sono gioco in movimento e non c'è
+ * niente di preparato da scegliere, rigore e tiro libero hanno un solo modo di
+ * battersi.
  */
 export const ORIGINI_TIRO: DefinizioneOrigine[] = [
   {
@@ -214,6 +247,7 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
     richiedeSchema: false,
   },
   ...TIPI_INATTIVA.map((t) => ({ ...t, richiedeSchema: true })),
+  ...ORIGINI_DA_FERMO,
 ]
 
 /**
@@ -221,35 +255,23 @@ export const ORIGINI_TIRO: DefinizioneOrigine[] = [
  * (che è la lista dei nostri). Sta però nella mappa, perché va comunque
  * etichettato quando lo si legge nel log o nelle statistiche.
  */
-const ORIGINE_RIGORE: DefinizioneOrigine = {
-  value: 'rigore',
-  label: 'Rigore',
-  labelCorta: 'Rigore',
-  icona: '⚫',
-  richiedeBattuta: false,
-  richiedeSchema: false,
-}
 
 /** Tutte le origini esistenti, nostre e loro. Serve per etichettare e contare. */
-export const TUTTE_LE_ORIGINI: DefinizioneOrigine[] = [
-  ...ORIGINI_TIRO,
-  ORIGINE_RIGORE,
-]
+export const TUTTE_LE_ORIGINI: DefinizioneOrigine[] = [...ORIGINI_TIRO]
 
 const MAPPA_ORIGINI = new Map(TUTTE_LE_ORIGINI.map((o) => [o.value, o]))
 
 /**
  * Le origini che ha senso mostrare, per fronte.
  *
- * Da parte nostra: azione, contropiede, recupero alto e le quattro palle
- * inattive, ognuna con i suoi schemi. Il rigore no, perché di là è già la zona
- * 'RIGORE'.
+ * Da parte nostra: azione, contropiede, recupero alto, le quattro palle
+ * inattive con i loro schemi, e le due da fermo.
  *
  * Da parte loro la lista è diversa. Gli schemi non c'entrano — sono i nostri —
  * e il calcio d'inizio nemmeno, non ci hanno mai segnato da lì. Restano le
- * situazioni che quando prendi gol vuoi sapere: rigore, punizione, corner,
- * rimessa, più contropiede e recupero alto (il loro pressing sulla nostra
- * costruzione). «Resto del gioco» raccoglie tutto il resto.
+ * situazioni che quando prendi gol vuoi sapere: rigore, tiro libero, punizione,
+ * corner, rimessa, più contropiede e recupero alto (il loro pressing sulla
+ * nostra costruzione). «Resto del gioco» raccoglie tutto il resto.
  */
 export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
   if (fronte === 'nostro') return ORIGINI_TIRO
@@ -260,6 +282,7 @@ export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
     di('contropiede'),
     di('recupero'),
     di('rigore'),
+    di('tiro_libero'),
     di('piazzato'),
     di('corner'),
     di('rimessa'),
@@ -267,25 +290,41 @@ export function originiPerFronte(fronte: Fronte): DefinizioneOrigine[] {
 }
 
 /**
- * La zona da cui si conclude quando l'origine la decide già da sé.
- * Il rigore si batte dal dischetto: chiedere anche la zona sarebbe una domanda
- * a cui c'è una sola risposta.
+ * La zona da cui si conclude quando l'origine la decide già da sé: il rigore
+ * dal dischetto dei 6, il tiro libero da quello dei 10. Chiedere anche la zona
+ * sarebbe una domanda a cui c'è una sola risposta.
  */
 export function zonaImplicitaOrigine(o: OrigineTiro): ZonaTiro | null {
-  return o === 'rigore' ? 'RIGORE' : null
+  return ZONA_DA_FERMO[o] ?? null
+}
+
+/** L'origine implicata da una zona da fermo, o null per le zone di campo. */
+export function origineDaZona(z: ZonaTiro | undefined): OrigineTiro | null {
+  if (z === 'RIGORE') return 'rigore'
+  if (z === 'TIRO_LIBERO') return 'tiro_libero'
+  return null
 }
 
 /**
  * Origine di una conclusione, da entrambi i fronti. Gli eventi registrati
  * prima che il campo esistesse non ce l'hanno: contano come azione, che è la
  * situazione di gran lunga più comune.
+ *
+ * Chi ha tirato dal dischetto però stava battendo un rigore, e dai 10 metri un
+ * tiro libero: quando la zona lo dice e l'origine non dice niente di diverso,
+ * vince la zona. Così i rigori segnati prima che questa origine esistesse non
+ * restano in mezzo alle azioni.
  */
 export function origineDi(e: Evento): OrigineTiro {
   switch (e.tipo) {
     case 'tiro':
     case 'gol_fatto':
     case 'tiro_subito':
-    case 'gol_subito':
+    case 'gol_subito': {
+      const esplicita = e.origine
+      if (esplicita !== undefined && esplicita !== 'azione') return esplicita
+      return origineDaZona(e.zona) ?? esplicita ?? 'azione'
+    }
     case 'autogol_pro':
       return e.origine ?? 'azione'
     default:
@@ -311,6 +350,15 @@ export function origineRichiedeBattuta(o: OrigineTiro): boolean {
 
 export function origineRichiedeSchema(o: OrigineTiro): boolean {
   return MAPPA_ORIGINI.get(o)?.richiedeSchema ?? false
+}
+
+/**
+ * Le origini che l'assist non ce l'hanno: la palla è ferma su un punto deciso
+ * dal regolamento e la tocca uno solo. Chiedere chi ha servito il rigorista è
+ * una domanda senza risposta.
+ */
+export function origineSenzaAssist(o: OrigineTiro): boolean {
+  return o === 'rigore' || o === 'tiro_libero'
 }
 
 /**

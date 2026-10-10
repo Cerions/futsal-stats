@@ -68,7 +68,7 @@ export default function Dashboard() {
       // anche il resto delle impostazioni.
       config: {
         numeroTempi: 2,
-        durataTempoMinuti: 20,
+        durataTempoMinuti: 30,
         tempoEffettivo: false,
       },
       convocati: [],

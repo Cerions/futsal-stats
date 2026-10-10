@@ -37,6 +37,7 @@ import {
   origineComeInattiva,
   origineRichiedeBattuta,
   origineRichiedeSchema,
+  origineSenzaAssist,
   originiPerFronte,
   pesoZona,
   zonaImplicitaOrigine,
@@ -378,19 +379,22 @@ export default function ModificaPartita() {
           ...datiOrigineNuovi(),
           tipo: 'gol_fatto',
           giocatoreId: Number(marcatoreNuovo),
-          assistId: assistNuovo === '' ? undefined : Number(assistNuovo),
-          zona: zonaNuova === '' ? undefined : zonaNuova,
+          assistId:
+            assistNuovo === '' || origineSenzaAssist(origineNuova)
+              ? undefined
+              : Number(assistNuovo),
+          zona: zonaNuovaEffettiva === '' ? undefined : zonaNuovaEffettiva,
         })
         break
       }
       case 'tiro': {
-        if (marcatoreNuovo === '' || zonaNuova === '') return
+        if (marcatoreNuovo === '' || zonaNuovaEffettiva === '') return
         await db.eventi.add({
           ...base,
           ...datiOrigineNuovi(),
           tipo: 'tiro',
           giocatoreId: Number(marcatoreNuovo),
-          zona: zonaNuova,
+          zona: zonaNuovaEffettiva,
           esito: esitoNuovo,
         })
         break
@@ -593,8 +597,13 @@ export default function ModificaPartita() {
         ...quando,
         ...datiOrigineEdit,
         giocatoreId: Number(editMarcatore),
-        assistId: editAssist === '' ? undefined : Number(editAssist),
-        zona: editZona === '' ? undefined : editZona,
+        // Diventato rigore o tiro libero, l'assist non ha più senso: si toglie
+        // invece di restare appeso a un'origine che non lo prevede.
+        assistId:
+          editAssist === '' || origineSenzaAssist(editOrigine)
+            ? undefined
+            : Number(editAssist),
+        zona: zonaEditEffettiva === '' ? undefined : zonaEditEffettiva,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'autogol_contro') {
       await db.eventi.update(eventoInModifica.id!, {
@@ -607,12 +616,12 @@ export default function ModificaPartita() {
         ...datiOrigineEdit,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'tiro') {
-      if (editZona === '') return
+      if (zonaEditEffettiva === '') return
       await db.eventi.update(eventoInModifica.id!, {
         ...quando,
         ...datiOrigineEdit,
         giocatoreId: Number(editMarcatore),
-        zona: editZona,
+        zona: zonaEditEffettiva,
         esito: editEsito,
       } as Partial<Evento>)
     } else if (eventoInModifica.tipo === 'gol_subito') {
@@ -743,7 +752,7 @@ export default function ModificaPartita() {
     tipoNuovo === 'gol_fatto' ||
     tipoNuovo === 'autogol_contro' ||
     tipoNuovo === 'tiro'
-  const richiedeAssist = tipoNuovo === 'gol_fatto'
+  const richiedeAssist = tipoNuovo === 'gol_fatto' && !origineSenzaAssist(origineNuova)
   const mostraZona =
     (tipoNuovo === 'gol_fatto' ||
       tipoNuovo === 'tiro' ||
@@ -1320,7 +1329,7 @@ export default function ModificaPartita() {
             </div>
           )}
 
-          {eventoInModifica?.tipo === 'gol_fatto' && (
+          {eventoInModifica?.tipo === 'gol_fatto' && !origineSenzaAssist(editOrigine) && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">
                 Assist (opzionale)

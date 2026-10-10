@@ -47,7 +47,9 @@ import {
   origineLabel,
   origineRichiedeBattuta,
   origineComeInattiva,
+  origineDaZona,
   origineRichiedeSchema,
+  origineSenzaAssist,
   originiPerFronte,
   pesoZona,
   xgTotale,
@@ -885,6 +887,15 @@ function Live({
     setTiroOrigine(o)
     setTiroBattuta(null)
     setTiroSchemaId(null)
+    // Rigore e tiro libero si battono da un punto solo: la zona è già decisa e
+    // si salta diritti all'esito.
+    const implicita = zonaImplicitaOrigine(o)
+    if (implicita !== null) {
+      setTiroZona(implicita)
+      if (autogolPro) salvaAutogolPro({ origine: o, battuta: null, schemaId: null })
+      else setPasso('esito')
+      return
+    }
     if (origineRichiedeBattuta(o)) setPasso('battuta')
     else if (origineRichiedeSchema(o) && schemiPerTipo(o as TipoInattiva).length > 0)
       setPasso('schema')
@@ -921,6 +932,11 @@ function Live({
 
   function scegliZonaTiro(z: ZonaTiro) {
     setTiroZona(z)
+    // La mappa ha ancora i bottoni del dischetto e dei 10 metri: è la strada
+    // corta durante la partita. Se passi di lì l'origine diventa quella, così
+    // il dato salvato dice la stessa cosa che poi leggi nelle statistiche.
+    const daZona = origineDaZona(z)
+    if (daZona !== null && tiroOrigine === 'azione') setTiroOrigine(daZona)
     setPasso('esito')
   }
 
@@ -942,7 +958,14 @@ function Live({
         else setPasso(origineFissata ? 'giocatore' : 'origine')
         break
       case 'esito':
-        setPasso('zona')
+        // Se la zona l'ha decisa l'origine non c'è una zona da rivedere.
+        setPasso(
+          zonaImplicitaOrigine(tiroOrigine) !== null
+            ? origineFissata
+              ? 'giocatore'
+              : 'origine'
+            : 'zona'
+        )
         break
       case 'assist':
         setPasso('esito')
@@ -1711,7 +1734,11 @@ function Live({
             </p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => setPasso('assist')}
+                onClick={() =>
+                  origineSenzaAssist(tiroOrigine)
+                    ? registraTiroGol(null)
+                    : setPasso('assist')
+                }
                 className="bg-emerald-600 hover:bg-emerald-500 px-4 py-3 rounded-lg font-bold"
               >
                 ⚽ Gol
@@ -1734,7 +1761,9 @@ function Live({
                 onClick={indietro}
                 className="w-full bg-slate-700 hover:bg-slate-600 py-2.5 rounded-lg text-sm"
               >
-                ← Cambia zona
+                {zonaImplicitaOrigine(tiroOrigine) !== null
+                  ? '← Indietro'
+                  : '← Cambia zona'}
               </button>
             </div>
           </>

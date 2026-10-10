@@ -19,6 +19,7 @@ import {
   TabellaGenerali,
   TabellaTiri,
 } from '../components/statistiche/VistaGiocatori'
+import TabellaMedie from '../components/statistiche/TabellaMedie'
 import { valoreColonna } from '../utils/colonne'
 import type { ColonnaOrdinabile, Ordinamento } from '../utils/colonne'
 
@@ -44,6 +45,7 @@ const SOTTO: Record<Sezione, { valore: string; label: string }[]> = {
   giocatori: [
     { valore: 'generali', label: 'Generali' },
     { valore: 'tiri', label: 'Tiri & xG' },
+    { valore: 'medie', label: 'Medie' },
     { valore: 'grafici', label: 'Grafici' },
   ],
   portieri: [],
@@ -357,6 +359,8 @@ export default function StatisticheStagione() {
           nomeSquadra={nomeSquadra(stagione)}
           ambito="giocatori"
         />
+      ) : sotto === 'medie' ? (
+        <TabellaMedie stats={stats} dettaglio={linkDettaglio} />
       ) : sotto === 'tiri' ? (
         <>
           <TabellaTiri stats={statsOrdinate} ord={ord} dettaglio={linkDettaglio} />
