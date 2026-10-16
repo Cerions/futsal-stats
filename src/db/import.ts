@@ -2,6 +2,7 @@ import { db } from './database'
 import { VERSIONE_EXPORT } from './export'
 import type { ExportData } from './export'
 import type { Evento, Partita } from './schema'
+import { uidDerivatiGiocatori, uidDerivatiPartite } from './uid'
 
 /**
  * Verifica che un oggetto sia un export valido.
@@ -103,11 +104,20 @@ export async function sostituisciStagione(
  * export, rigenerando gli id e rimappando ogni riferimento.
  */
 async function popolaStagione(data: ExportData, nuovaStagioneId: number) {
+  // Gli uid viaggiano con l'export (v5+). Nei file più vecchi non ci sono e
+  // si derivano dal contenuto, con la stessa regola della migrazione del
+  // database: così chi scarica una stagione non ancora ricaricata ottiene gli
+  // stessi uid che il proprietario ha già in locale.
+  const uidGiocatori = uidDerivatiGiocatori(data.giocatori)
+  const nomeAvvFile = new Map(data.avversari.map((a) => [a.id!, a.nome]))
+  const uidPartite = uidDerivatiPartite(data.partite, (id) => nomeAvvFile.get(id) ?? '')
+
   // 2. Mappa giocatori: vecchio id → nuovo id
   const mappaGiocatori = new Map<number, number>()
-  for (const g of data.giocatori) {
+  for (const [i, g] of data.giocatori.entries()) {
     const vecchioId = g.id!
     const nuovoId = await db.giocatori.add({
+      uid: g.uid ?? uidGiocatori[i],
       stagioneId: nuovaStagioneId,
       nome: g.nome,
       cognome: g.cognome,
@@ -145,9 +155,10 @@ async function popolaStagione(data: ExportData, nuovaStagioneId: number) {
 
   // 4. Mappa partite (riscrivendo avversarioId, convocati, titolari, inCampo)
   const mappaPartite = new Map<number, number>()
-  for (const p of data.partite) {
+  for (const [i, p] of data.partite.entries()) {
     const vecchioId = p.id!
     const nuovaPartita: Omit<Partita, 'id'> = {
+      uid: p.uid ?? uidPartite[i],
       stagioneId: nuovaStagioneId,
       avversarioId: mappaAvversari.get(p.avversarioId) ?? 0,
       dataOra: p.dataOra,

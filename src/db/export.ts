@@ -16,10 +16,13 @@ import type {
  * 3 → aggiunge schemi d'angolo, eventi corner e origine delle conclusioni
  * 4 → gli schemi valgono per tutte le palle inattive (hanno un tipo) e il
  *     corner battuto diventa un evento 'inattiva' generico
+ * 5 → giocatori e partite hanno uno `uid` stabile, a cui si agganciano i voti.
+ *     Un'app ferma alla v4 rifiuta questi file invece di importarli perdendo
+ *     gli uid e poi ricaricarli sul cloud senza.
  * L'import accetta tutte le versioni fino a questa: i file più vecchi
  * semplicemente non hanno i campi nuovi e vengono normalizzati al volo.
  */
-export const VERSIONE_EXPORT = 4
+export const VERSIONE_EXPORT = 5
 
 export interface ExportData {
   formato: 'futsal-stats-export'

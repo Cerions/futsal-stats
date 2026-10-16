@@ -7,6 +7,7 @@ import type {
   Evento,
   Schema,
 } from './schema'
+import { nuovoUid, uidDerivatiGiocatori, uidDerivatiPartite } from './uid'
 
 export class FutsalDB extends Dexie {
   stagioni!: Table<Stagione, number>
@@ -54,6 +55,52 @@ export class FutsalDB extends Dexie {
             }
           })
       })
+    // v4: uid stabili su giocatori e partite, per i voti (vedi db/uid.ts).
+    // Quelli esistenti prendono uno uid derivato dal contenuto, così ogni
+    // dispositivo calcola gli stessi valori senza doversi parlare.
+    this.version(4)
+      .stores({
+        giocatori: '++id, stagioneId, nome, uid',
+        partite: '++id, stagioneId, avversarioId, dataOra, stato, uid',
+      })
+      .upgrade(async (tx) => {
+        const giocatori = (await tx.table('giocatori').toArray()) as Giocatore[]
+        const partite = (await tx.table('partite').toArray()) as Partita[]
+        const avversari = (await tx.table('avversari').toArray()) as SquadraAvversaria[]
+        const nomeAvv = new Map(avversari.map((a) => [a.id!, a.nome]))
+
+        const perStagione = <T extends { stagioneId: number; id?: number }>(xs: T[]) => {
+          const m = new Map<number, T[]>()
+          for (const x of [...xs].sort((a, b) => a.id! - b.id!)) {
+            const l = m.get(x.stagioneId) ?? []
+            l.push(x)
+            m.set(x.stagioneId, l)
+          }
+          return m
+        }
+
+        for (const lista of perStagione(giocatori).values()) {
+          const uid = uidDerivatiGiocatori(lista)
+          for (let i = 0; i < lista.length; i++) {
+            if (!lista[i].uid) await tx.table('giocatori').update(lista[i].id!, { uid: uid[i] })
+          }
+        }
+        for (const lista of perStagione(partite).values()) {
+          const uid = uidDerivatiPartite(lista, (id) => nomeAvv.get(id) ?? '')
+          for (let i = 0; i < lista.length; i++) {
+            if (!lista[i].uid) await tx.table('partite').update(lista[i].id!, { uid: uid[i] })
+          }
+        }
+      })
+
+    // Ogni giocatore o partita nuova nasce con il suo uid. L'import ne passa
+    // uno già pronto (quello del file, o derivato) e qui viene rispettato.
+    this.giocatori.hook('creating', (_pk, obj) => {
+      if (!obj.uid) obj.uid = nuovoUid()
+    })
+    this.partite.hook('creating', (_pk, obj) => {
+      if (!obj.uid) obj.uid = nuovoUid()
+    })
   }
 }
 

@@ -48,6 +48,12 @@ export interface SquadraAvversaria {
 
 export interface Giocatore {
   id?: number
+  /**
+   * Identificativo stabile, uguale su tutti i dispositivi (vedi db/uid.ts).
+   * Opzionale nel tipo solo perché lo assegna l'hook di creazione: nel
+   * database c'è sempre.
+   */
+  uid?: string
   stagioneId: number
   nome: string
   cognome: string
@@ -179,6 +185,8 @@ export interface DatiOrigine {
 
 export interface Partita {
   id?: number
+  /** Identificativo stabile, come per i giocatori: lo usano i voti. */
+  uid?: string
   stagioneId: number
   avversarioId: number
   dataOra: number

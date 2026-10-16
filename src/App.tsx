@@ -8,6 +8,8 @@ import ModificaPartita from './pages/ModificaPartita'
 import StatisticheStagione from './pages/StatisticheStagione'
 import DettaglioGiocatore from './pages/DettaglioGiocatore'
 import Cloud from './pages/Cloud'
+import Voti from './pages/Voti'
+import VotiPartita from './pages/VotiPartita'
 import SincronizzazioneAuto from './cloud/auto'
 
 export default function App() {
@@ -23,6 +25,8 @@ export default function App() {
             path="/stagione/:id/statistiche/giocatore/:giocatoreId"
             element={<DettaglioGiocatore />}
           />
+          <Route path="/stagione/:id/voti" element={<Voti />} />
+          <Route path="/stagione/:id/voti/partita/:uid" element={<VotiPartita />} />
           <Route path="/partita/:id" element={<Partita />} />
           <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
           <Route path="/cloud" element={<Cloud />} />

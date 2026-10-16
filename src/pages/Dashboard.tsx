@@ -175,7 +175,7 @@ export default function Dashboard() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-6">
         <div>
           <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
             ← Home
@@ -189,13 +189,19 @@ export default function Dashboard() {
         <div className="flex gap-2">
           <Link
             to={`/stagione/${stagioneId}/statistiche`}
-            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5"
+            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 whitespace-nowrap"
           >
             📊 Stats
           </Link>
           <Link
+            to={`/stagione/${stagioneId}/voti`}
+            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 whitespace-nowrap"
+          >
+            ⭐ Voti
+          </Link>
+          <Link
             to={`/setup-stagione/${stagioneId}`}
-            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5"
+            className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-1.5 whitespace-nowrap"
           >
             Setup
           </Link>

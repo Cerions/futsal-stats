@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.112.4",
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
+    "fflate": "^0.8.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1"

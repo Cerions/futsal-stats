@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { nomeSquadra } from '../utils/stagione'
@@ -9,6 +9,7 @@ import { useConferma } from '../utils/conferma'
 import { esportaStagione } from '../db/export'
 import { improntaDati } from '../cloud/impronta'
 import type { Stagione } from '../db/schema'
+import PersoneStagione from '../components/condivisione/PersoneStagione'
 import { cloudConfigurato, nomeDispositivo, rinominaDispositivo } from '../cloud/supabase'
 import { accedi, esci, registrati, useSessione } from '../cloud/auth'
 import {
@@ -16,7 +17,6 @@ import {
   elencoCloud,
   eliminaDalCloud,
   impostaAuto,
-  impostaCondivisione,
   scaricaStagione,
   scollegaStagione,
   type EsitoCarica,
@@ -52,7 +52,10 @@ export default function Cloud() {
     aggiornatoDa: string | null
   } | null>(null)
   const [condivisione, setCondivisione] = useState<RigaCloud | null>(null)
-  const [emailCondivise, setEmailCondivise] = useState('')
+  // `?persone=<id>` apre direttamente le persone di una stagione: ci si
+  // arriva dalla sezione Voti
+  const [parametri, setParametri] = useSearchParams()
+  const daAprire = parametri.get('persone')
   const [dispositivo, setDispositivo] = useState(nomeDispositivo())
 
   const aggiornaElenco = useCallback(async () => {
@@ -190,21 +193,16 @@ export default function Cloud() {
     await aggiornaElenco()
   }
 
-  function apriCondivisione(riga: RigaCloud) {
-    setCondivisione(riga)
-    setEmailCondivise(riga.condivisa_con.join('\n'))
-  }
-
-  async function salvaCondivisione() {
-    if (!condivisione) return
-    const err = await impostaCondivisione(
-      condivisione.id,
-      emailCondivise.split(/[\n,;]+/)
-    )
-    if (err) setErrore(err)
-    setCondivisione(null)
-    await aggiornaElenco()
-  }
+  // Aperta dal link della sezione Voti: si apre appena l'elenco è arrivato
+  useEffect(() => {
+    if (!daAprire || !righeCloud) return
+    const riga = righeCloud.find((r) => r.id === daAprire)
+    // lo stato si tocca in un microtask, non in modo sincrono nell'effetto
+    if (riga) queueMicrotask(() => setCondivisione(riga))
+    const p = new URLSearchParams(parametri)
+    p.delete('persone')
+    setParametri(p, { replace: true })
+  }, [daAprire, righeCloud, parametri, setParametri])
 
   // ---- stati della pagina ----
 
@@ -373,9 +371,10 @@ export default function Cloud() {
                   )}
                   {riga && riga.proprietario === miaUtenza && (
                     <button
-                      onClick={() => apriCondivisione(riga)}
+                      onClick={() => setCondivisione(riga)}
+                      data-persone={riga.id}
                       className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm"
-                      title="Condividi in sola lettura"
+                      title="Persone: chi vede la stagione e chi dà i voti"
                     >
                       👥{riga.condivisa_con.length > 0 ? ` ${riga.condivisa_con.length}` : ''}
                     </button>
@@ -546,50 +545,15 @@ export default function Cloud() {
         )}
       </Modal>
 
-      {/* ---- condivisione ---- */}
-      <Modal
-        open={condivisione !== null}
-        onClose={() => setCondivisione(null)}
-        title="Condividi in sola lettura"
-      >
-        <p className="text-slate-400 text-sm mb-3">
-          Un'email per riga. Chi è in elenco vede la stagione ma non può
-          modificarla: nella sua app non compaiono i bottoni per registrare o
-          cambiare niente, e il permesso di scrittura non ce l'ha nemmeno il
-          server.
-        </p>
-        <ol className="text-slate-400 text-xs mb-3 list-decimal pl-5 flex flex-col gap-1">
-          <li>
-            Prima deve registrarsi lui su questa app, con l'email che scrivi qui.
-          </li>
-          <li>Poi la aggiungi qui sotto e salvi.</li>
-          <li>
-            Lui apre Sincronizzazione, la trova sotto «Condivise con te» e
-            preme Scarica qui. Da lì in poi si aggiorna da sola.
-          </li>
-        </ol>
-        <textarea
-          value={emailCondivise}
-          onChange={(e) => setEmailCondivise(e.target.value)}
-          rows={4}
-          placeholder="mister@esempio.it"
-          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 mb-4 resize-none"
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setCondivisione(null)}
-            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
-          >
-            Annulla
-          </button>
-          <button
-            onClick={salvaCondivisione}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500"
-          >
-            Salva
-          </button>
-        </div>
-      </Modal>
+      {/* ---- persone: condivisione e allenatori ---- */}
+      <PersoneStagione
+        riga={condivisione}
+        miaEmail={email ?? ''}
+        onChiudi={(salvato) => {
+          setCondivisione(null)
+          if (salvato) void aggiornaElenco()
+        }}
+      />
 
       <ConfermaAzione {...conferma.props} />
     </Guscio>

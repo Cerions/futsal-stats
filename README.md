@@ -32,6 +32,8 @@ App PWA per registrare statistiche di partite di calcio a 5.
 - [x] PWA installabile su Android
 - [x] Deploy automatico su Netlify
 - [x] Sincronizzazione tra dispositivi via Supabase, con condivisione in sola lettura
+- [x] Voti degli allenatori: voto e nota per partita, medie, allenatori con delega (tabelle in `supabase/voti.sql`)
+- [x] Voti: medie per partita e mensili, grafici, media data da ogni allenatore, import dello storico dal foglio (.xlsx/.csv)
 - [ ] xG subiti (xGA): zone anche sui tiri avversari
 
 ## xG semplificato

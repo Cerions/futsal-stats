@@ -21,10 +21,26 @@ function fnv1a(testo: string, seed: number): number {
   return h >>> 0
 }
 
+/**
+ * Versione del formato su cui si calcola l'impronta. Resta ferma alla 4 anche
+ * quando l'export sale: un formato nuovo non è una modifica ai dati, e se
+ * l'impronta cambiasse ogni dispositivo crederebbe di avere qualcosa da
+ * caricare — e il secondo a provarci finirebbe in conflitto.
+ */
+const VERSIONE_IMPRONTA = 4
+
 export function improntaDati(dati: ExportData): string {
   const { dataExport: _data, ...resto } = dati
   void _data
-  const json = JSON.stringify(resto)
+  // Gli uid restano fuori per lo stesso motivo: nascono una volta, insieme a
+  // una modifica che l'impronta vede già, e non cambiano più. L'unico momento
+  // in cui comparirebbero da soli è la migrazione, che non è una modifica.
+  const json = JSON.stringify({
+    ...resto,
+    versione: VERSIONE_IMPRONTA,
+    giocatori: resto.giocatori.map(({ uid: _u, ...g }) => (void _u, g)),
+    partite: resto.partite.map(({ uid: _u, ...p }) => (void _u, p)),
+  })
   return [
     fnv1a(json, 0x811c9dc5).toString(36),
     fnv1a(json, 0x9e3779b9).toString(36),
