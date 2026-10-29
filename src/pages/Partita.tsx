@@ -58,6 +58,8 @@ import {
 } from '../db/zone'
 import GestioneConvocati from '../components/GestioneConvocati'
 import NumeroMaglia from '../components/NumeroMaglia'
+import AvvisoPiano from '../components/AvvisoPiano'
+import { useLimiti } from '../cloud/piano'
 
 /** Passi del flusso di registrazione di una conclusione. */
 type PassoTiro = 'giocatore' | 'origine' | 'battuta' | 'schema' | 'zona' | 'esito' | 'assist'
@@ -100,25 +102,42 @@ export default function Partita() {
         : [],
     [partita?.stagioneId]
   )
+  const limiti = useLimiti()
 
   if (!partita || !stagione || !avversario || !rosa) {
     return <div className="p-6">Caricamento...</div>
   }
 
+  // Piano gratuito con più partite del consentito: si guarda e basta, come per
+  // una stagione condivisa. Una partita già in corso si lascia finire.
+  const bloccataDalPiano =
+    limiti.sopraLimite && stagione.soloLettura !== true && partita.stato !== 'in_corso'
+  const soloLettura = stagione.soloLettura === true || bloccataDalPiano
+  const avviso = bloccataDalPiano && (
+    <div className="max-w-2xl mx-auto px-6 pt-6 -mb-2">
+      <AvvisoPiano tipo="bloccata" motivo={limiti.piano.motivo} />
+    </div>
+  )
+
   // Routing interno in base allo stato
   if (partita.stato === 'da_giocare') {
     return (
-      <PreMatch
-        partita={partita}
-        rosa={rosa}
-        avversari={avversari ?? []}
-        stagioneId={stagione.id!}
-        soloLettura={stagione.soloLettura === true}
-      />
+      <>
+        {avviso}
+        <PreMatch
+          partita={partita}
+          rosa={rosa}
+          avversari={avversari ?? []}
+          stagioneId={stagione.id!}
+          soloLettura={soloLettura}
+        />
+      </>
     )
   }
 
   return (
+    <>
+    {avviso}
     <Live
       partita={partita}
       rosa={rosa}
@@ -127,8 +146,9 @@ export default function Partita() {
       avversarioNome={avversario.nome}
       squadraNome={nomeSquadra(stagione)}
       stagioneId={stagione.id!}
-      soloLettura={stagione.soloLettura === true}
+      soloLettura={soloLettura}
     />
+    </>
   )
 }
 

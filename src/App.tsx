@@ -11,6 +11,7 @@ import Cloud from './pages/Cloud'
 import Voti from './pages/Voti'
 import VotiPartita from './pages/VotiPartita'
 import SincronizzazioneAuto from './cloud/auto'
+import Privacy from './pages/Privacy'
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/partita/:id" element={<Partita />} />
           <Route path="/partita/:id/modifica" element={<ModificaPartita />} />
           <Route path="/cloud" element={<Cloud />} />
+          <Route path="/privacy" element={<Privacy />} />
         </Routes>
         <SincronizzazioneAuto />
         <UpdatePrompt />

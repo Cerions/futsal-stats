@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { esportaStagione } from '../db/export'
 import { improntaDati } from './impronta'
-import { caricaStagione, scaricaStagione, versioneCloud } from './sync'
+import { ERRORE_LIMITE_PIANO, caricaStagione, scaricaStagione, versioneCloud } from './sync'
 import { cloudConfigurato } from './supabase'
 import { useSessione } from './auth'
 import { scriviStatoSync } from './statoSync'
@@ -117,7 +117,14 @@ function StagioneSincronizzata({ stagione }: { stagione: Stagione }) {
         const esito = await caricaStagione(stagioneId)
         // Il conflitto viene scritto sulla stagione da caricaStagione: questo
         // componente smette di essere renderizzato e la UI mostra il banner.
-        scriviStatoSync(stagioneId, esito.esito === 'errore' ? 'errore' : 'inPari')
+        scriviStatoSync(
+          stagioneId,
+          esito.esito !== 'errore'
+            ? 'inPari'
+            : esito.messaggio === ERRORE_LIMITE_PIANO
+            ? 'limitePiano'
+            : 'errore'
+        )
       } finally {
         occupata.current = false
       }

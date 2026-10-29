@@ -13,6 +13,8 @@ export type StatoSync =
   | 'inCorso'
   | 'inPausaPartita'
   | 'errore'
+  /** il server non accetta il caricamento: piano gratuito oltre il limite */
+  | 'limitePiano'
 
 const stati = new Map<number, StatoSync>()
 const ascoltatori = new Set<() => void>()

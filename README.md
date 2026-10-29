@@ -34,6 +34,8 @@ App PWA per registrare statistiche di partite di calcio a 5.
 - [x] Sincronizzazione tra dispositivi via Supabase, con condivisione in sola lettura
 - [x] Voti degli allenatori: voto e nota per partita, medie, allenatori con delega (tabelle in `supabase/voti.sql`)
 - [x] Voti: medie per partita e mensili, grafici, media data da ogni allenatore, import dello storico dal foglio (.xlsx/.csv)
+- [x] Piano gratuito e Premium, gestito a mano da Supabase (`supabase/abbonamenti.sql`)
+- [x] Privacy policy (`/privacy`, dati del gestore in `src/config.ts`)
 - [ ] xG subiti (xGA): zone anche sui tiri avversari
 
 ## xG semplificato
@@ -158,6 +160,30 @@ va invece mai messa nel front-end.
 
 Senza le variabili l'app funziona esattamente come prima, tutta offline: il
 bottone di sincronizzazione semplicemente non compare.
+
+## Piano gratuito e Premium
+
+Chi è Premium lo decide la tabella `abbonamenti` su Supabase, una riga per
+email, che si modifica solo dalla dashboard (l'app può solo leggere la propria
+riga). `scade_il` vuoto = Premium senza scadenza; una data = Premium fino a
+quel momento; data passata o nessuna riga = gratuito.
+
+| | Gratuito | Premium |
+| --- | --- | --- |
+| Partite | una | senza limite |
+| Con più di una partita (es. dopo la prova) | si guardano, non si modificano né se ne creano | — |
+| Download del backup | no | sì |
+| Sincronizzazione e condivisione | sì, entro una partita in tutto | sì |
+
+Il limite vale per le stagioni di cui sei proprietario: chi riceve una stagione
+in condivisione (sola lettura o allenatore che vota) non è toccato dal piano.
+
+L'app ricorda l'ultima risposta del server, quindi offline continua a sapere
+il piano; una scadenza vale anche offline. Lato server, policy RLS restrittive
+impediscono a chi non è Premium di caricare sul cloud più di una partita.
+
+Setup: esegui `supabase/abbonamenti.sql` e inserisci **prima** la riga del tuo
+account (comandi in fondo al file), poi pubblica l'app.
 
 ## Formato di export
 

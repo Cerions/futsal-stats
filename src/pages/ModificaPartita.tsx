@@ -12,6 +12,7 @@ import Modal from '../components/Modal'
 import GestioneConvocati from '../components/GestioneConvocati'
 import ConfermaAzione from '../components/ConfermaAzione'
 import { useConferma } from '../utils/conferma'
+import { useLimiti } from '../cloud/piano'
 import {
   campiRiassegnati,
   eventiDaRiassegnare,
@@ -161,6 +162,7 @@ export default function ModificaPartita() {
   const partitaId = Number(id)
 
   const partita = useLiveQuery(() => db.partite.get(partitaId), [partitaId])
+  const limiti = useLimiti()
   const stagione = useLiveQuery(
     () => (partita ? db.stagioni.get(partita.stagioneId) : undefined),
     [partita?.stagioneId]
@@ -255,6 +257,11 @@ export default function ModificaPartita() {
 
   // Le stagioni condivise si guardano e basta: qui non si entra proprio.
   if (stagione.soloLettura) {
+    return <Navigate to={`/partita/${partitaId}`} replace />
+  }
+  // Piano gratuito con più partite del consentito: si guardano e basta, e la
+  // pagina della partita spiega perché.
+  if (limiti.sopraLimite) {
     return <Navigate to={`/partita/${partitaId}`} replace />
   }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { eliminaStagione } from '../db/cascade'
@@ -11,6 +11,8 @@ import type { Stagione } from '../db/schema'
 import { esportaStagione, nomeFileExport, scaricaJSON } from '../db/export'
 import { importaStagione, validaImport, leggiFileJSON } from '../db/import'
 import { cloudConfigurato } from '../cloud/supabase'
+import { usePiano } from '../cloud/piano'
+import { GESTORE } from '../config'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -32,6 +34,7 @@ export default function HomePage() {
   )
 
   const conferma = useConferma()
+  const piano = usePiano()
 
   async function creaStagione() {
     const nome = nomeNuova.trim()
@@ -79,6 +82,21 @@ export default function HomePage() {
   }
 
   async function esportaStagioneFile(s: Stagione) {
+    // Il download del backup è del Premium. Vedere i dati resta sempre
+    // possibile, e chi ha il cloud li ritrova comunque sugli altri dispositivi.
+    if (!piano.premium) {
+      alert(
+        piano.caricamento
+          ? 'Sto verificando il tuo piano, riprova tra un attimo.'
+          : 'Il download del backup è compreso nel Premium.' +
+              (piano.motivo === 'senzaAccesso'
+                ? ' Se ce l\'hai già, accedi da Sincronizzazione.'
+                : GESTORE.email
+                ? ` Per attivarlo scrivi a ${GESTORE.email}.`
+                : '')
+      )
+      return
+    }
     try {
       const data = await esportaStagione(s.id!)
       const filename = nomeFileExport(s.nome, nomeSquadra(s))
@@ -131,6 +149,13 @@ export default function HomePage() {
           ☁️ Sincronizzazione
         </button>
       )}
+
+      <Link
+        to="/privacy"
+        className="text-xs text-slate-500 hover:text-slate-300 underline mt-6"
+      >
+        Privacy
+      </Link>
 
       {/* Modal: crea nuova stagione */}
       <Modal
@@ -219,9 +244,9 @@ export default function HomePage() {
                     <button
                       onClick={() => esportaStagioneFile(s)}
                       className="text-slate-400 hover:text-slate-100 px-2 py-1 text-sm"
-                      title="Esporta backup"
+                      title={piano.premium ? 'Esporta backup' : 'Esporta backup (Premium)'}
                     >
-                      ⬇️
+                      {piano.premium ? '⬇️' : '🔒'}
                     </button>
                     {!s.soloLettura && (
                       <button

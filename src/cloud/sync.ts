@@ -39,10 +39,19 @@ export type EsitoScarica =
   | { esito: 'ok'; stagioneId: number }
   | { esito: 'errore'; messaggio: string }
 
+/**
+ * Il server rifiuta il caricamento quando il piano gratuito supera la sua
+ * partita (policy in supabase/abbonamenti.sql). È l'unico controllo RLS che
+ * il proprietario può far scattare caricando, quindi si riconosce così.
+ */
+export const ERRORE_LIMITE_PIANO =
+  'Piano gratuito: sul cloud si tiene al massimo una partita in tutto. Con il Premium il limite non c\'è.'
+
 function messaggioErrore(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)
   if (/failed to fetch|networkerror|load failed/i.test(m))
     return 'Nessuna connessione: riprova quando hai linea.'
+  if (/row-level security/i.test(m)) return ERRORE_LIMITE_PIANO
   return m
 }
 

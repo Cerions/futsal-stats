@@ -15,6 +15,8 @@ import SelettoreCampo from '../components/SelettoreCampo'
 import { campoIcona, campoLabel } from '../db/schema'
 import type { CampoPartita, Partita, TagPartita } from '../db/schema'
 import { risultatoPartita } from '../utils/statistiche'
+import { useLimiti } from '../cloud/piano'
+import AvvisoPiano from '../components/AvvisoPiano'
 
 export default function Dashboard() {
   const { id } = useParams()
@@ -55,9 +57,13 @@ export default function Dashboard() {
   const [campoPartita, setCampoPartita] = useState<CampoPartita | undefined>('casa')
 
   const conferma = useConferma()
+  const limiti = useLimiti()
 
   async function creaPartita() {
     if (avversarioId === '') return
+    // Ricontrollo qui: la finestra può essere rimasta aperta mentre il piano
+    // cambiava, o con una partita creata da un'altra scheda.
+    if (!limiti.puoCreare) return
     const id = await db.partite.add({
       stagioneId,
       avversarioId: Number(avversarioId),
@@ -219,11 +225,19 @@ export default function Dashboard() {
           {/* Bottone nuova partita */}
           <button
             onClick={() => setShowNuovaPartita(true)}
-            disabled={!avversari || avversari.length === 0}
+            disabled={!avversari || avversari.length === 0 || !limiti.puoCreare}
             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed py-4 rounded-lg font-semibold mb-6"
           >
-            + Nuova partita
+            {limiti.pronto && !limiti.puoCreare ? '🔒 Nuova partita' : '+ Nuova partita'}
           </button>
+
+          {limiti.pronto && !limiti.puoCreare && (
+            <AvvisoPiano
+              tipo={limiti.sopraLimite ? 'bloccata' : 'creare'}
+              motivo={limiti.piano.motivo}
+              className="mb-6 -mt-4"
+            />
+          )}
 
           {avversari && avversari.length === 0 && (
             <p className="text-sm text-amber-400 mb-6 -mt-4">
@@ -397,7 +411,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={creaPartita}
-              disabled={avversarioId === ''}
+              disabled={avversarioId === '' || !limiti.puoCreare}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
             >
               Crea partita

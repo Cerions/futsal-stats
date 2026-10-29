@@ -12,6 +12,7 @@ import type { Stagione } from '../db/schema'
 import PersoneStagione from '../components/condivisione/PersoneStagione'
 import { cloudConfigurato, nomeDispositivo, rinominaDispositivo } from '../cloud/supabase'
 import { accedi, esci, registrati, useSessione } from '../cloud/auth'
+import { descriviPiano, usePiano, verificaPiano } from '../cloud/piano'
 import {
   caricaStagione,
   elencoCloud,
@@ -37,6 +38,7 @@ export default function Cloud() {
   const conferma = useConferma()
   const navigate = useNavigate()
   const { sessione, caricamento, email } = useSessione()
+  const piano = usePiano()
 
   const stagioni = useLiveQuery(
     () => db.stagioni.orderBy('dataCreazione').reverse().toArray(),
@@ -60,6 +62,7 @@ export default function Cloud() {
 
   const aggiornaElenco = useCallback(async () => {
     if (!sessione) return
+    if (sessione.user.email) void verificaPiano(sessione.user.email, true)
     try {
       setRigheCloud(await elencoCloud())
       setErrore(null)
@@ -270,6 +273,12 @@ export default function Cloud() {
             >
               {dispositivo}
             </button>
+          </div>
+          <div
+            className={`text-xs mt-0.5 ${piano.premium ? 'text-amber-300' : 'text-slate-500'}`}
+            data-piano={piano.motivo}
+          >
+            {piano.caricamento ? 'Verifico il piano…' : descriviPiano(piano)}
           </div>
         </div>
         <button
@@ -640,6 +649,15 @@ function Login() {
       >
         {attesa ? 'Un attimo...' : modo === 'accedi' ? 'Accedi' : 'Crea account'}
       </button>
+      {modo === 'registrati' && (
+        <p className="text-xs text-slate-500">
+          Creando l'account accetti la{' '}
+          <Link to="/privacy" className="underline hover:text-slate-300">
+            privacy policy
+          </Link>
+          .
+        </p>
+      )}
       <button
         onClick={() => {
           setModo(modo === 'accedi' ? 'registrati' : 'accedi')

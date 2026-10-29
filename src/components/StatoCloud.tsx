@@ -38,6 +38,7 @@ export default function StatoCloud({ stagione }: { stagione: Stagione }) {
     inCorso: '☁️ Salvataggio…',
     inPausaPartita: '⏸️ In pausa durante la partita',
     errore: '📴 Offline — riproverà da sola',
+    limitePiano: '🔒 Non sincronizzata: piano gratuito',
   }
   const colore =
     stato === 'errore'
