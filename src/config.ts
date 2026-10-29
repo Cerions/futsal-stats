@@ -7,9 +7,9 @@
  */
 export const GESTORE = {
   /** Nome e cognome di chi risponde dei dati (il «titolare»). */
-  nome: '',
+  nome: 'Luca Cerioni',
   /** Email a cui scrivere per il Premium e per le richieste sui dati. */
-  email: '',
+  email: 'cerions2@gmail.com',
   /**
    * Regione del progetto Supabase dove stanno i dati sincronizzati.
    * Si legge in Supabase → Project Settings → General (es. «Frankfurt, UE»).
