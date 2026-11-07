@@ -28,6 +28,7 @@ export type ColonnaOrdinabile =
   | 'xG'
   | 'xGDiff'
   | 'conversione'
+  | 'precisione'
 
 /** Stato dell'ordinamento, passato agli header cliccabili. */
 export interface Ordinamento<C extends string = ColonnaOrdinabile> {
@@ -86,6 +87,19 @@ export function conversione(s: StatsGiocatore): number {
   return s.tiri > 0 ? s.gol / s.tiri : -1
 }
 
+/**
+ * Frequenza relativa dei tiri in porta: tiri in porta su tiri totali.
+ * -1 se non ha mai tirato.
+ */
+export function precisione(s: StatsGiocatore): number {
+  return s.tiri > 0 ? s.tiriInPorta / s.tiri : -1
+}
+
+/** Una frazione da 0 a 1 come percentuale intera; '—' se manca (-1). */
+export function formatPercentuale(f: number): string {
+  return f < 0 ? '—' : `${Math.round(f * 100)}%`
+}
+
 export function valoreColonna(
   s: StatsGiocatore,
   c: ColonnaOrdinabile
@@ -121,5 +135,7 @@ export function valoreColonna(
       return s.gol - s.xG
     case 'conversione':
       return conversione(s)
+    case 'precisione':
+      return precisione(s)
   }
 }

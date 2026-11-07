@@ -1,7 +1,7 @@
 import type { StatsGiocatore } from '../../utils/statistiche'
 import { formatXG } from '../../db/zone'
 import { Th, ThGiocatore, TdGiocatore } from './tabella'
-import { conversione } from '../../utils/colonne'
+import { conversione, formatPercentuale, precisione } from '../../utils/colonne'
 import type { Ordinamento } from '../../utils/colonne'
 
 /** Le due tabelle dei singoli: il rendiconto generale e quello di tiri e xG. */
@@ -98,6 +98,9 @@ export function TabellaTiri({
             <ThGiocatore ord={ord} />
             <Th col="tiri" ord={ord}>Tiri</Th>
             <Th col="tiriInPorta" ord={ord}>TP</Th>
+            <Th col="precisione" ord={ord} titolo="Tiri in porta su tiri totali">
+              TP%
+            </Th>
             <Th col="gol" ord={ord}>Gol</Th>
             <Th col="conversione" ord={ord}>Conv.</Th>
             <Th col="xG" ord={ord}>xG</Th>
@@ -118,11 +121,14 @@ export function TabellaTiri({
                 <td className="px-2 py-2 text-right tabular-nums text-slate-400">
                   {s.tiriInPorta}
                 </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {formatPercentuale(precisione(s))}
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums font-semibold">
                   {s.gol}
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                  {conv < 0 ? '—' : `${Math.round(conv * 100)}%`}
+                  {formatPercentuale(conv)}
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
                   {formatXG(s.xG)}

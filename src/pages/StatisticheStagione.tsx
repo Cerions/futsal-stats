@@ -369,8 +369,9 @@ export default function StatisticheStagione() {
               <strong className="text-slate-400">Tiri</strong>: conclusioni totali
               (un gol è un tiro riuscito) •{' '}
               <strong className="text-slate-400">TP</strong>: tiri in porta (gol e
-              tiri parati) • <strong className="text-slate-400">Conv.</strong>: gol
-              su tiri
+              tiri parati) • <strong className="text-slate-400">TP%</strong>: tiri
+              in porta su tiri totali •{' '}
+              <strong className="text-slate-400">Conv.</strong>: gol su tiri
             </p>
             <p>
               <strong className="text-slate-400">xG</strong>: gol attesi in base

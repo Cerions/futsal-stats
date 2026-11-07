@@ -15,6 +15,7 @@ import {
   TUTTE_LE_ORIGINI,
   pesoZona,
   TIPI_INATTIVA,
+  xgTotale,
   zonaDiTiro,
 } from '../db/zone'
 import type { Fronte } from '../db/zone'
@@ -365,6 +366,56 @@ export function contaTiri(eventi: Evento[], fronte: Fronte = 'nostro'): Conteggi
     }
   }
   return { totali, inPorta }
+}
+
+/** Precisione: tiri in porta su tiri totali, da 0 a 1. -1 se nessun tiro. */
+export function precisioneTiri(c: ConteggioTiri): number {
+  return c.totali > 0 ? c.inPorta / c.totali : -1
+}
+
+export interface StatsTempo {
+  tempo: number
+  tiri: ConteggioTiri
+  xG: number
+  gol: number
+  tiriSubiti: ConteggioTiri
+  xGA: number
+  subiti: number
+}
+
+/**
+ * Le stesse cifre di squadra, spezzate per tempo di gioco: quanto si produce e
+ * quanto si concede nel 1° tempo rispetto al 2°.
+ *
+ * I tempi sono quelli che le partite dell'ambito prevedono; se un evento sta
+ * in un tempo oltre (un supplementare), quel tempo compare comunque, per non
+ * perdere nessuna conclusione dal conto. I gol sono quelli del risultato,
+ * autogol compresi, come nel bilancio: per confrontarli con l'xG vale la
+ * stessa avvertenza del riquadro «Gol − xG».
+ */
+export function statistichePerTempo(
+  partite: Partita[],
+  eventi: Evento[]
+): StatsTempo[] {
+  let numeroTempi = 0
+  for (const p of partite) numeroTempi = Math.max(numeroTempi, p.config.numeroTempi)
+  for (const e of eventi) numeroTempi = Math.max(numeroTempi, e.tempoGioco)
+
+  const righe: StatsTempo[] = []
+  for (let t = 1; t <= numeroTempi; t++) {
+    const delTempo = eventi.filter((e) => e.tempoGioco === t)
+    const { fatti, subiti } = risultatoPartita(delTempo)
+    righe.push({
+      tempo: t,
+      tiri: contaTiri(delTempo, 'nostro'),
+      xG: xgTotale(delTempo, 'nostro'),
+      gol: fatti,
+      tiriSubiti: contaTiri(delTempo, 'loro'),
+      xGA: xgTotale(delTempo, 'loro'),
+      subiti,
+    })
+  }
+  return righe
 }
 
 /** Quante conclusioni hanno una zona registrata, per fronte. */

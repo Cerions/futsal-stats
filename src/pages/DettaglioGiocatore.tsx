@@ -3,11 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import CampoTiri from '../components/CampoTiri'
 import { Riquadro } from '../components/statistiche/tabella'
-import { conversione } from '../utils/colonne'
+import { conversione, formatPercentuale, precisione } from '../utils/colonne'
 import {
   calcolaStatistiche,
   conteggiPerZona,
+  precisioneTiri,
   statistichePerOrigine,
+  statistichePerTempo,
 } from '../utils/statistiche'
 import { ePreset, partiteDelPreset } from '../utils/preset'
 import { nomeCompleto } from '../utils/giocatore'
@@ -84,6 +86,8 @@ export default function DettaglioGiocatore() {
       (e.tipo === 'tiro' || e.tipo === 'gol_fatto') && e.giocatoreId === gid
   )
   const conteggiZone = conteggiPerZona(suoi, 'nostro')
+  // Sulle sole sue conclusioni i gol del «risultato» sono i suoi gol.
+  const perTempo = statistichePerTempo(ambito, suoi)
   const definizioni = originiPerFronte('nostro')
   const perOrigine = definizioni
     .map((d) => {
@@ -149,11 +153,13 @@ export default function DettaglioGiocatore() {
               nota={`${s.tiriInPorta} in porta`}
             />
           </div>
-          <div className="grid grid-cols-3 gap-2 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
             <Riquadro
-              etichetta="Conversione"
-              valore={conv < 0 ? '—' : `${Math.round(conv * 100)}%`}
+              etichetta="Tiri in porta %"
+              valore={formatPercentuale(precisione(s))}
+              nota={`${s.tiriInPorta} su ${s.tiri}`}
             />
+            <Riquadro etichetta="Conversione" valore={formatPercentuale(conv)} />
             <Riquadro
               etichetta="xG"
               valore={formatXG(s.xG)}
@@ -175,6 +181,50 @@ export default function DettaglioGiocatore() {
               }
             />
           </div>
+
+          {s.tiri > 0 && perTempo.length > 1 && (
+            <section className="mb-6">
+              <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
+                Tempo per tempo
+              </h2>
+              <div className="overflow-x-auto -mx-4 px-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-xs text-slate-400">
+                      <th className="px-2 py-2 text-left font-semibold">Tempo</th>
+                      <th className="px-2 py-2 text-right font-semibold">Tiri</th>
+                      <th className="px-2 py-2 text-right font-semibold">TP%</th>
+                      <th className="px-2 py-2 text-right font-semibold">Gol</th>
+                      <th className="px-2 py-2 text-right font-semibold">xG</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {perTempo.map((t) => (
+                      <tr
+                        key={t.tempo}
+                        data-tempo={t.tempo}
+                        className="border-b border-slate-800/50"
+                      >
+                        <td className="px-2 py-2">{t.tempo}° tempo</td>
+                        <td className="px-2 py-2 text-right tabular-nums">
+                          {t.tiri.totali}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                          {formatPercentuale(precisioneTiri(t.tiri))}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                          {t.gol}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
+                          {formatXG(t.xG)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <section className="mb-6">
             <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
