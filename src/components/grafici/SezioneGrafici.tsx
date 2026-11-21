@@ -25,6 +25,11 @@ import { Legenda, NienteDati, TitoloGrafico } from './base'
  * partite.
  */
 
+/** Minuti con un decimale, senza lo zero inutile: 20′, 17.5′. */
+function formatMinuti(m: number): string {
+  return `${Number(m.toFixed(1))}′`
+}
+
 interface Props {
   /** le partite dell'ambito: una sola, oppure tutte quelle concluse */
   partite: Partita[]
@@ -107,6 +112,14 @@ export default function SezioneGrafici({
     .sort((a, b) => b.minutiGiocati - a.minutiGiocati)
   // Tutti, senza tagli: con una rosa da quindici il grafico si allunga un po',
   // ma non resta il dubbio su chi manchi e perché.
+  // La media si fa sulle partite giocate: chi non è mai sceso in campo resta
+  // fuori, dividere per zero non dice niente.
+  const perMinutiMedi = giocanti
+    .filter((s) => s.partiteGiocate > 0)
+    .sort(
+      (a, b) =>
+        b.minutiGiocati / b.partiteGiocate - a.minutiGiocati / a.partiteGiocate
+    )
   const perXG = [...giocanti].filter((s) => s.tiri > 0).sort((a, b) => b.xG - a.xG)
   const perPiuMeno = [...giocanti].sort(
     (a, b) => b.golPro - b.golContro - (a.golPro - a.golContro)
@@ -273,6 +286,24 @@ export default function SezioneGrafici({
             valore: s.minutiGiocati,
           }))}
           formatta={(v) => `${v}′`}
+        />
+      </Riquadro>
+
+      <Riquadro
+        titolo="Minuti a partita"
+        sottotitolo="Media dei minuti sulle partite giocate davvero, come nella tabella Medie: chi ha saltato delle partite non viene penalizzato."
+      >
+        <BarreOrizzontali
+          vuoto="Nessun minuto registrato."
+          righe={perMinutiMedi.map((s) => ({
+            chiave: String(s.giocatore.id),
+            etichetta: nomeCorto(s.giocatore),
+            valore: s.minutiGiocati / s.partiteGiocate,
+            nota: `${formatMinuti(s.minutiGiocati / s.partiteGiocate)} · ${
+              s.partiteGiocate
+            } PG`,
+          }))}
+          formatta={formatMinuti}
         />
       </Riquadro>
 
