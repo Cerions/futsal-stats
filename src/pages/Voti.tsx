@@ -1,7 +1,6 @@
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
-import { nomeSquadra } from '../utils/stagione'
 import { useVoti } from '../cloud/voti'
 import Requisiti from '../components/voti/Requisiti'
 import ElencoPartiteVoti from '../components/voti/ElencoPartiteVoti'
@@ -55,7 +54,7 @@ export default function Voti() {
         to={`/stagione/${stagioneId}`}
         className="text-sm text-slate-400 hover:text-slate-200"
       >
-        ← {nomeSquadra(stagione)}
+        ← Stagione
       </Link>
       <h1 className="text-2xl font-bold mt-1">Voti</h1>
       <p className="text-sm text-slate-400 mb-5">{stagione.nome}</p>

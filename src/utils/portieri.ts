@@ -14,8 +14,11 @@ import type { StatsGiocatore } from './statistiche'
  * parato più di quanto ci si aspettasse.
  */
 
-/** Durata di riferimento per le medie: una partita piena di calcio a 5. */
-export const MINUTI_PARTITA = 40
+/**
+ * Durata di riferimento per le medie: una partita piena al nostro livello,
+ * due tempi da 30 minuti a tempo continuo.
+ */
+export const MINUTI_PARTITA = 60
 
 export interface StatsPortiere {
   giocatore: Giocatore

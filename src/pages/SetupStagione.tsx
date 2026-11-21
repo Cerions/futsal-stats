@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/database'
 import { nomeSquadra } from '../utils/stagione'
@@ -32,7 +32,6 @@ function eSezione(v: string | null): v is Sezione {
 
 export default function SetupStagione() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const stagioneId = Number(id)
 
   const stagione = useLiveQuery(() => db.stagioni.get(stagioneId), [stagioneId])
@@ -88,22 +87,19 @@ export default function SetupStagione() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <div className="flex items-center justify-between gap-3 mb-6">
+      <div className="mb-6">
         <div className="min-w-0">
-          <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
-            ← Home
+          <Link
+            to={`/stagione/${stagioneId}`}
+            className="text-sm text-slate-400 hover:text-slate-200"
+          >
+            ← Stagione
           </Link>
           <h1 className="text-2xl font-bold mt-1 truncate">
             {nomeSquadra(stagione)}
           </h1>
           <p className="text-sm text-slate-400">{stagione.nome} • Setup stagione</p>
         </div>
-        <button
-          onClick={() => navigate(`/stagione/${stagioneId}`)}
-          className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-semibold shrink-0"
-        >
-          Partite →
-        </button>
       </div>
 
       {soloLettura && (
