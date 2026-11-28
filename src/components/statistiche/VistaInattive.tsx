@@ -155,119 +155,124 @@ export default function VistaInattive({
         </p>
       )}
 
-      <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
-        Schemi
-        <span className="ml-2 normal-case tracking-normal text-slate-500 font-normal">
-          {battute} palle inattive battute
-        </span>
-      </h2>
+      {/* Gli schemi sono solo nostri: fra le subite non c'è niente da mostrare. */}
+      {fronte === 'nostro' && (
+        <>
+          <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">
+            Schemi
+            <span className="ml-2 normal-case tracking-normal text-slate-500 font-normal">
+              {battute} palle inattive battute
+            </span>
+          </h2>
 
-      {perSchema.every((g) => g.righe.length === 0) ? (
-        <p className="text-slate-500 italic text-sm">
-          Nessuno schema definito e nessuna palla inattiva registrata. Gli schemi
-          si aggiungono dal setup della stagione.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {perSchema
-            .filter((g) => g.righe.length > 0)
-            .map((g) => (
-              <div key={g.tipo}>
-                <h3 className="text-sm font-semibold text-slate-300 mb-1">
-                  <span className="mr-1">{inattivaIcona(g.tipo)}</span>
-                  {inattivaLabel(g.tipo)}
-                  <span className="ml-2 text-slate-500 font-normal">
-                    {g.battute} {g.battute === 1 ? 'battuta' : 'battute'} · {g.tiri}{' '}
-                    {g.tiri === 1 ? 'tiro' : 'tiri'} · {golTotali(g)} gol
-                  </span>
-                </h3>
-                <div className="overflow-x-auto -mx-4 px-4">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-700 text-xs text-slate-400">
-                        <th className="px-2 py-2 text-left font-semibold">Schema</th>
-                        <th className="px-2 py-2 text-right font-semibold">
-                          Battute
-                        </th>
-                        <th className="px-2 py-2 text-right font-semibold">Tiri</th>
-                        <th
-                          className="px-2 py-2 text-right font-semibold"
-                          title="Gol nati da questo schema, autogol avversari compresi"
-                        >
-                          Gol
-                        </th>
-                        <th
-                          className="px-2 py-2 text-right font-semibold"
-                          title="Quanti di quei gol sono autogol avversari che lo schema ha provocato"
-                        >
-                          AG
-                        </th>
-                        <th className="px-2 py-2 text-right font-semibold">
-                          Tiri/battuta
-                        </th>
-                        <th className="px-2 py-2 text-right font-semibold">xG</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.righe.map((r) => (
-                        <tr
-                          key={r.schema?.id ?? `${g.tipo}-nessuno`}
-                          className="border-b border-slate-800/50 hover:bg-slate-800/30"
-                        >
-                          <td className="px-2 py-2">
-                            <div className="font-medium">
-                              {r.schema?.nome ?? (
-                                <span className="text-slate-500 italic">
-                                  Senza schema
-                                </span>
-                              )}
-                            </div>
-                            {r.schema?.note && (
-                              <div className="text-xs text-slate-500">
-                                {r.schema.note}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums">
-                            {r.battute}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums">
-                            {r.tiri}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                            {golTotali(r)}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                            {r.autogol === 0 ? '—' : r.autogol}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums text-slate-400">
-                            {r.battute === 0 ? '—' : (r.tiri / r.battute).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
-                            {formatXG(r.xG)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-        </div>
+          {perSchema.every((g) => g.righe.length === 0) ? (
+            <p className="text-slate-500 italic text-sm">
+              Nessuno schema definito e nessuna palla inattiva registrata. Gli schemi
+              si aggiungono dal setup della stagione.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {perSchema
+                .filter((g) => g.righe.length > 0)
+                .map((g) => (
+                  <div key={g.tipo}>
+                    <h3 className="text-sm font-semibold text-slate-300 mb-1">
+                      <span className="mr-1">{inattivaIcona(g.tipo)}</span>
+                      {inattivaLabel(g.tipo)}
+                      <span className="ml-2 text-slate-500 font-normal">
+                        {g.battute} {g.battute === 1 ? 'battuta' : 'battute'} · {g.tiri}{' '}
+                        {g.tiri === 1 ? 'tiro' : 'tiri'} · {golTotali(g)} gol
+                      </span>
+                    </h3>
+                    <div className="overflow-x-auto -mx-4 px-4">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-700 text-xs text-slate-400">
+                            <th className="px-2 py-2 text-left font-semibold">Schema</th>
+                            <th className="px-2 py-2 text-right font-semibold">
+                              Battute
+                            </th>
+                            <th className="px-2 py-2 text-right font-semibold">Tiri</th>
+                            <th
+                              className="px-2 py-2 text-right font-semibold"
+                              title="Gol nati da questo schema, autogol avversari compresi"
+                            >
+                              Gol
+                            </th>
+                            <th
+                              className="px-2 py-2 text-right font-semibold"
+                              title="Quanti di quei gol sono autogol avversari che lo schema ha provocato"
+                            >
+                              AG
+                            </th>
+                            <th className="px-2 py-2 text-right font-semibold">
+                              Tiri/battuta
+                            </th>
+                            <th className="px-2 py-2 text-right font-semibold">xG</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.righe.map((r) => (
+                            <tr
+                              key={r.schema?.id ?? `${g.tipo}-nessuno`}
+                              className="border-b border-slate-800/50 hover:bg-slate-800/30"
+                            >
+                              <td className="px-2 py-2">
+                                <div className="font-medium">
+                                  {r.schema?.nome ?? (
+                                    <span className="text-slate-500 italic">
+                                      Senza schema
+                                    </span>
+                                  )}
+                                </div>
+                                {r.schema?.note && (
+                                  <div className="text-xs text-slate-500">
+                                    {r.schema.note}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums">
+                                {r.battute}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums">
+                                {r.tiri}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                                {golTotali(r)}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                                {r.autogol === 0 ? '—' : r.autogol}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                                {r.battute === 0 ? '—' : (r.tiri / r.battute).toFixed(2)}
+                              </td>
+                              <td className="px-2 py-2 text-right tabular-nums text-emerald-400">
+                                {formatXG(r.xG)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <p className="text-xs text-slate-500 mt-4">
+            La battuta e la conclusione che ne nasce sono due eventi separati:{' '}
+            <strong className="text-slate-400">Battute</strong> conta quante volte hai
+            giocato quello schema, <strong className="text-slate-400">Tiri</strong>{' '}
+            quante volte ne è uscita una conclusione. Il rapporto tra i due dice se lo
+            schema produce o gira a vuoto. Nei{' '}
+            <strong className="text-slate-400">Gol</strong> ci sono anche gli autogol
+            avversari che lo schema ha provocato — la colonna{' '}
+            <strong className="text-slate-400">AG</strong> dice quanti: per lo schema
+            sono una riuscita, ma un tiro nostro dietro non c'è, quindi in xG non
+            entrano.
+          </p>
+        </>
       )}
-
-      <p className="text-xs text-slate-500 mt-4">
-        La battuta e la conclusione che ne nasce sono due eventi separati:{' '}
-        <strong className="text-slate-400">Battute</strong> conta quante volte hai
-        giocato quello schema, <strong className="text-slate-400">Tiri</strong>{' '}
-        quante volte ne è uscita una conclusione. Il rapporto tra i due dice se lo
-        schema produce o gira a vuoto. Nei{' '}
-        <strong className="text-slate-400">Gol</strong> ci sono anche gli autogol
-        avversari che lo schema ha provocato — la colonna{' '}
-        <strong className="text-slate-400">AG</strong> dice quanti: per lo schema
-        sono una riuscita, ma un tiro nostro dietro non c'è, quindi in xG non
-        entrano.
-      </p>
     </>
   )
 }
